@@ -20,6 +20,7 @@
     <li id="dec">Data decrypted</li>
 </ul>
 <audio src="firefox.mp3" id="ring"/>
+<audio src="error.mp3" id="boo"/>
 </body>
 <script src="common.js"></script>
 <script src="der_lite.js"></script>
@@ -63,6 +64,7 @@
             err.classList.remove("hidden");
         }
         console.error(msg, e);
+        document.getElementById("boo").play()
         throw new Error(e);
     }
 
