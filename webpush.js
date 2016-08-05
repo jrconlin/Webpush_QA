@@ -394,7 +394,6 @@ function send(options) {
                     show_err("Server returned 400. Probably " +
                         "missing headers.<br>If refreshing doesn't work " +
                         "the 'curl' call below should still work fine.");
-                    show_ok(false);
                     throw new Error("Server Returned 400");
                 }
                 throw new Error('Unable to deliver message: ',
@@ -405,8 +404,7 @@ function send(options) {
             return true;
         })
         .catch(err => {
-            console.error("Send Failed: ", err);
-            show_ok(false);
+            show_err("Send Failed: ", err);
             return false;
         });
 }
