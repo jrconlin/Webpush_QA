@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Web Push: Data Encryption Test Page</title>
+    <link href="style.css" rel="stylesheet"/>
+    <link href="manifest.json" rel="manifest"/>
+</head>
+<body>
+<div id="error"></div>
+<ul id="steps">
+    <li id="pre">Preflight</li>
+    <li id="reg">Register</li>
+    <li id="sub">Get Subscription</li>
+    <li id="gen">Generate Data</li>
+    <li id="vap">Generate VAPID</li>
+    <li id="enc">Encrypt Data</li>
+    <li id="snd">Send Data</li>
+    <li id="rcv">Received Data</li>
+    <li id="dec">Data decrypted</li>
+</ul>
+<audio src="firefox.mp3" id="ring"/>
+</body>
+<script src="common.js"></script>
+<script src="der_lite.js"></script>
+<script src="base64.js"></script>
+<script src="webpush.js"></script>
+<script src="vapid.js"></script>
+<script>
+    'use strict';
+
+    var mzcc = new MozCommon();
+    var vapid = new VapidToken(mzcc = mzcc);
+    var data = {};
+    reset();
+
+
+    function activate(id) {
+        try {
+            document.getElementById(id).classList.toggle("undone");
+        }
+        catch (e) {
+            show_err(e);
+        }
+    }
+
+    function notify(title, body) {
+        let notif = new Notification(title,
+                {
+                    body: body,
+                    icon: "icon.png",
+                });
+    }
+
+
+    function show_err(errMsg) {
+        let err = document.getElementById("error");
+        for (let i = 0; i < err.length; i++) {
+            if (errMsg == false) {
+                err[i].classList.add("hidden");
+                err[i].innerHTML = '';
+            } else {
+                err[i].innerHTML = errMsg;
+                err[i].classList.remove("hidden");
+            }
+        }
+        console.error(errMsg);
+        throw new Error(errMsg);
+    }
+
+
+    function register(appServerKey) {
+        /* Register the service worker.
+         Remember, the service worker script must be served either from
+         "localhost" or from a TLS secured site (e.g. https://example.com)
+
+         */
+        return navigator.serviceWorker.getRegistration()
+                .then(function (registration) {
+                    if (!registration || !navigator.serviceWorker.controller) {
+                        return navigator.serviceWorker.register("sw.js")
+                                .then(function () {
+                                    console.log("Service worker loaded, reloading");
+                                    window.location.reload();
+                                })
+                                .catch(function (err) {
+                                    if (err.name == "SecurityError" || err.name == "NotSupportedError") {
+                                        show_err("Could not start.<br>This page requires a secure " +
+                                                "server. (e.g. one that can serve https:// pages). " +
+                                                "<br>The page can also be served from `localhost'.");
+                                        return
+                                    }
+                                    console.error("Error", err);
+                                });
+                    }
+                    activate("reg");
+                    return subscribe(appServerKey);
+                })
+                .catch(function (err) {
+                    let msg = "Registration Error: Could not start.<br> " + err.toString();
+                    show_err(msg);
+                });
+    }
+
+
+    function subscribe(appServerKey) {
+        /* Fetch an endpoint.
+
+         Yes, this could be a continuation of the above. I've broken it out
+         a little purely to make the page a little less "magical" about what
+         it's doing.
+         */
+        return navigator.serviceWorker.getRegistration()
+                .then(function (registration) {
+                    /* The service worker script has been loaded, so
+                     now we need to register for an endpoint.
+
+                     Normally, you only need to register once, the first
+                     time that you ever load a given app or page.
+
+                     */
+                    function resubscribe() {
+                        return registration.pushManager.subscribe({
+                            // Set this to be "true" if you're only displaying
+                            // the data to the user. Set it to "false" if you
+                            // want to use this notification internally and not
+                            // display a message.
+                            userVisibleOnly: false,
+                            applicationServerKey: appServerKey,
+                        });
+                    }
+
+                    console.debug("Registering...", registration);
+                    // Get the subscription info.
+                    return registration.pushManager.getSubscription().then(subscription => {
+                        if (subscription) {
+                            return subscription.unsubscribe().then(resubscribe);
+                        }
+                        return resubscribe();
+                    })
+                            .then(function (subscription_info) {
+                                activate("sub");
+                                if (!subscription_info.endpoint) {
+                                    console.error("Subscription doesn't have an " +
+                                            "endpoint. Aborting.");
+                                    let err = new Error();
+                                    err.name = "NoEndpoint";
+                                    err.message = "Subscription does not have an endpoint";
+                                    throw err;
+                                }
+                                if (!subscription_info.getKey) {
+                                    console.error("Subscription doesn't allow " +
+                                            "data encryption. Aborting.");
+                                    let err = new Error();
+                                    err.name = "NoData";
+                                    err.message = "Subscription does not allow data";
+                                    throw err;
+                                }
+                                data['endpoint'] = subscription_info.endpoint;
+                                let rkey = base64url.encode(subscription_info.getKey('p256dh'));
+                                data['receiverKey'] = rkey;
+                                data['salt'] = base64url.encode(crypto.getRandomValues(
+                                        new Uint8Array(16)));
+                                data['subscription_info'] = subscription_info;
+                                try {
+                                    // Auth key allows for improved Crypto-Key support.
+                                    // However, it's being slowly rolled out.
+                                    let authKey = subscription_info.getKey('auth');
+                                    if (!authKey) {
+                                        console.warn("This browser doesn't support auth key. Please update.");
+                                    }
+                                    data['authKey'] = base64url.encode(authKey);
+                                } catch (e) {
+                                    console.warn("Crypto-Key support unavailable.");
+                                }
+                                return vapid.sign({
+                                    sub: "mailto:admin@example.com",
+                                }).then(headers => {
+                                    delete(headers.publicKey);
+                                    add_vapid();
+                                }).then(_ => subscription_info);
+                                return subscription_info;
+                            })
+                            .catch(function (err) {
+                                show_err(err.message);
+                            });
+                })
+                .catch(function (err) {
+                    if (err.name == "SecurityError" || err.name == "NotSupportedError") {
+                        show_err("Could not start.<br>This page requires a secure " +
+                                "server. (e.g. one that can serve https:// pages). " +
+                                "<br>The page can also be served from `localhost'.");
+                        return
+                    }
+                    show_err("Registration Error: " + msg.toString());
+                });
+
+    }
+    function reset() {
+        data = {
+            "msg": "Amidst the mists and coldest frosts, I thrust my fists " +
+            "against the posts, and still demand to see the ghosts."
+        }
+        for (let x of document.getElementById("steps").getElementsByTagName("li")) {
+            x.classList.toggle("done");
+        }
+        activate("gen");
+    }
+
+
+    function encrypt(data) {
+        let receiverKey = data['receiverKey'];
+        let vapid_headers = data['vapid_headers'];
+        let endpoint = data['endpoint'];
+        let salt = base64url.decode(data["salt"]);
+        if (!salt) {
+            return;
+        }
+        let msg = data["msg"];
+        console.debug("receiverKey", receiverKey);
+        let rKey = base64url.decode(receiverKey);
+        let authKey;
+        try {
+            // Auth key allows for improved Crypto-Key support.
+            // However, it's being slowly rolled out.
+            authKey = data.subscription_info.getKey('auth');
+            if (authKey) {
+                console.debug("Auth key: ",
+                        base64url.encode(authKey));
+            }
+        } catch (e) {
+            console.warn("Crypto-Key support unavailable.", e);
+        }
+
+        return webpush({
+                    endpoint: endpoint,
+                    receiverKey: rKey,
+                    authKey: authKey
+                },
+                msg,
+                salt)
+                .then(options => {
+                    // If we have VAPID info, fetch it.
+                    try {
+                        if (vapid_headers == undefined) {
+                            vapid_headers = JSON.parse(data["vapidHeaders"]);
+                        }
+                    } catch (e) {
+                        console.warn("Could not fetch VAPID headers", e);
+                    }
+                    // Populate the extra fields
+                    data['osalt'] = base64url.encode(options.salt);
+                    data['odh', options.dh];
+                    let rawStr = '';
+                    // Construct the curl. Remember, this needs to
+                    // write a binary file first, then have curl read that file.
+                    // This is because putting the data "inline" can fail.
+                    let sbody = '';
+                    let ebody = '';
+                    let cbody = '';
+                    for (let k in options.payload) {
+                        let ik = parseInt(k);
+                        let ij = parseInt(options.payload[k]);
+                        let cj = ("00" + ij.toString(16)).slice(-2, 4);
+                        sbody += `\\x${cj}`;
+                        cbody += String.fromCodePoint(ij);
+                        ebody += cj;
+                        if ((ik + 1) % 2 == 0) {
+                            ebody += " ";
+                        }
+                        if ((ik + 1) % 16 == 0) {
+                            ebody += "<br>";
+                        }
+                    }
+                    rawStr += 'echo -ne "' + sbody + '" > encrypted.data;';
+                    // dump the raw curl to console.log. This is useful for
+                    // folks doing device work.
+                    rawStr += `curl -v -X ${options.method} ${options.endpoint} `;
+                    let enc_content = 'keyid=p256dh;dh=' + options.dh;
+                    if (options.encr_header == "crypto-key" && vapid_headers) {
+                        // add the vapid info
+                        // Note: technically, these should be separated with a
+                        // ",", however some Push Servers may reject "," as
+                        // an invalid character. You can use ";" and create
+                        // a single record.
+                        enc_content += ";" + vapid_headers["crypto-key"];
+                        rawStr += ` -H "Authorization: ` +
+                                `${vapid_headers.authorization}" `;
+                    }
+                    rawStr += ` -H "${options.encr_header}: ` + enc_content + '"';
+                    rawStr += ' -H "encryption: keyid=p256dh;salt=' +
+                            base64url.encode(options.salt) + '"';
+                    rawStr += ' -H "content-encoding: aesgcm"';
+                    rawStr += ' -H "TTL: 60"';
+                    rawStr += ' --data-binary @encrypted.data';
+                    console.log(rawStr);
+
+                    data['curl'] = rawStr;
+                    data['odata'] = ebody;
+                    if (vapid_headers) {
+                        Object.keys(vapid_headers).forEach(name => {
+                            let headers = options.headers.getAll(name);
+                            headers.push(vapid_headers[name]);
+                            options.headers.set(name, headers.join(","));
+                        });
+                    }
+                    activate("enc");
+                    return send(options);
+                })
+                .catch(e => {
+                    console.error("Error:", e);
+                });
+    }
+
+
+    navigator.serviceWorker.addEventListener('message', function (event) {
+        console.debug('Service Worker sent:', JSON.stringify(event.data));
+        if (event.data.type == 'content') {
+            activate("rcv");
+            // Compare what we got with the source to make sure
+            // that things worked ok.
+            let source = data["msg"];
+            if (source == event.data.content) {
+                activate("dec");
+            }
+            notify("Got message", event.data.content);
+            // show_ok(true, event.data.content);
+            document.getElementById("ring").play();
+        }
+    });
+
+
+    function init_vapid() {
+        // Vapid should ALWAYS use it's own key set.
+        data['vapid_exp'] = parseInt(Date.now() * .001) + 86400;
+        return vapid.generate_keys().then(keys => {
+            let exporter = new DERLite();
+            return Promise.all([
+                exporter.export_private_der(keys.privateKey),
+                exporter.export_public_der(keys.publicKey),
+                vapid.export_public_raw(),
+            ]).then(([vapidPrivate, vapidPublic, appServerKey]) => {
+                data["vapidPrivate"] = vapidPrivate;
+                data["vapidPublic"] = vapidPublic;
+                data["vapidPublicForDashboard"] = appServerKey;
+                return mzcc.strToArray(mzcc.fromUrlBase64(appServerKey));
+            });
+        });
+    }
+
+    function add_vapid() {
+        /* Add the optional VAPID information.
+
+         See vapid.js for how this is built using Javascript.
+         (I'll note that it's MUCH easier using other languages like python or java.)
+         */
+        let claims = {"sub": "mailto:admin@example.com"};
+        let vapid_err = "";
+        document.getElementById("error").innerHTML = vapid_err;
+        if (vapid_err) {
+            return false;
+        }
+        vapid.sign(claims).then(headers => {
+            delete(headers.publicKey);
+            data["vapidHeaders"] = JSON.stringify(headers, null, '    ');
+            // We don't really need to do a full message re-encryption here,
+            // but this is the easiest way to inject the VAPID headers into
+            // the demo send.
+            activate("vap");
+            encrypt(data)
+        })
+                .catch(err => {
+                    console.error(err)
+                });
+    }
+
+    function preflight() {
+        // Check that this browser can do all we're going to ask of it.
+        try {
+            let msg = "This browser is not yet ready to support Webpush data. ";
+            msg = "<br>See <a href=\"https://developer.mozilla.org/en-US/docs/" +
+                    "Web/API/SubtleCrypto/exportKey#Browser_compatibility\">" +
+                    "Browser Compatibility List</a> for currently supported browsers";
+            let webCrypto = window.crypto.subtle;
+            var pfkeys;
+            /* First, let's check that ECDH is supported. We'll need that
+             * for pretty much everything.
+             */
+            webCrypto.generateKey(
+                    {name: "ECDH", namedCurve: "P-256"},
+                    true,
+                    ["deriveBits"])
+                    .then(new_keys => {
+                        /* Neat, now on to 'raw' key format. Raw keys are used
+                         * for things like the Crypto Key values. It's possible to
+                         * fake them (see common.js JWKToRaw) but there are lots
+                         * of potential bugs in that approach.
+                         */
+                        pfkeys = new_keys;
+                        webCrypto.exportKey('raw', pfkeys.publicKey)
+                                .then(key => {
+                                    /* Can we import a public key for key bit derivation?
+                                     * This is used by signing mechanisms like VAPID and
+                                     * data sends. Again, possible to fake, but introduces
+                                     * more bugs than it solves.
+                                     */
+                                    webCrypto.importKey(
+                                            'raw',
+                                            key,
+                                            {name: "ECDH", namedCurve: "P-256"},
+                                            true,
+                                            ['deriveBits'])
+                                            .then(key => {
+                                                /* And finally, can we derive bits from the
+                                                 * imported key and the private key? This is
+                                                 * the core of ECDSA. If it fails, yeah, nothing
+                                                 * is ever going to work. Christmas is ruined
+                                                 * forever, etc.
+                                                 */
+                                                webCrypto.deriveBits(
+                                                        {
+                                                            name: "ECDH",
+                                                            namedCurve: "P-256",
+                                                            public: key
+                                                        },
+                                                        pfkeys.privateKey,
+                                                        256)
+                                                        .then(derived => {
+                                                            console.debug("Preflight is Ok");
+                                                            return true;
+                                                        })
+                                                        .catch(err => {
+                                                            show_err(msg +
+                                                                    "<br>ECDSA key derivation not supported.<br>" +
+                                                                    err.toString());
+                                                        });
+                                            })
+                                            .catch(err => {
+                                                show_err(msg +
+                                                        "<br>Raw key import not supported.</br>" +
+                                                        err.toString());
+                                            });
+                                })
+                                .catch(err => {
+                                    show_err(msg +
+                                            "<br>Raw key export not supported.<br>" +
+                                            err.toString());
+                                });
+                    })
+                    .catch(err => {
+                        show_err(msg + "<br>Preflight failed</br>" + err.toString());
+                    });
+        } catch (e) {
+            show_err(msg + "<br>" + e.toString());
+            return false;
+        }
+        activate("pre");
+    }
+
+    preflight();
+
+    init_vapid().then(register).catch(e =>
+            show_err("Could not generate VAPID keys: " + e.message)
+    );
+</script>
+</html>
