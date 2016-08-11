@@ -2,12 +2,12 @@
 <html>
 <head>
     <meta charset="utf-8"/>
-    <title>Web Push: Data Encryption Test Page</title>
+    <title>Web Push: Automatic Test Page</title>
     <link href="style.css" rel="stylesheet"/>
     <link href="manifest.json" rel="manifest"/>
 </head>
 <body>
-<div id="error"></div>
+<div id="error" class="hidden"></div>
 <ul id="steps">
     <li id="pre">Preflight</li>
     <li id="reg">Register</li>
@@ -20,6 +20,7 @@
     <li id="dec">Data decrypted</li>
 </ul>
 <audio src="firefox.mp3" id="ring"/>
+<audio src="error.mp3" id="boo"/>
 </body>
 <script src="common.js"></script>
 <script src="der_lite.js"></script>
@@ -40,7 +41,7 @@
             document.getElementById(id).classList.toggle("undone");
         }
         catch (e) {
-            show_err(e);
+            show_err("activate", e);
         }
     }
 
@@ -53,19 +54,18 @@
     }
 
 
-    function show_err(errMsg) {
+    function show_err(msg, e) {
         let err = document.getElementById("error");
-        for (let i = 0; i < err.length; i++) {
-            if (errMsg == false) {
-                err[i].classList.add("hidden");
-                err[i].innerHTML = '';
-            } else {
-                err[i].innerHTML = errMsg;
-                err[i].classList.remove("hidden");
-            }
+        if (msg == false) {
+            err.classList.add("hidden");
+            err.innerHTML = '';
+        } else {
+            err.innerHTML = msg + " " + e.toString();
+            err.classList.remove("hidden");
         }
-        console.error(errMsg);
-        throw new Error(errMsg);
+        console.error(msg, e);
+        document.getElementById("boo").play()
+        throw new Error(e);
     }
 
 
@@ -97,8 +97,8 @@
                     return subscribe(appServerKey);
                 })
                 .catch(function (err) {
-                    let msg = "Registration Error: Could not start.<br> " + err.toString();
-                    show_err(msg);
+                    let msg = "Registration Error: Could not start.";
+                    show_err(msg, err);
                 });
     }
 
@@ -189,10 +189,10 @@
                     if (err.name == "SecurityError" || err.name == "NotSupportedError") {
                         show_err("Could not start.<br>This page requires a secure " +
                                 "server. (e.g. one that can serve https:// pages). " +
-                                "<br>The page can also be served from `localhost'.");
+                                "<br>The page can also be served from `localhost'.", err);
                         return
                     }
-                    show_err("Registration Error: " + msg.toString());
+                    show_err("Registration Error: ", msg);
                 });
 
     }
@@ -275,7 +275,7 @@
                     rawStr += 'echo -ne "' + sbody + '" > encrypted.data;';
                     // dump the raw curl to console.log. This is useful for
                     // folks doing device work.
-                    rawStr += `curl -v -X ${options.method} ${options.endpoint} `;
+                    rawStr += `curl -v -X ${options.method} "${options.endpoint}" `;
                     let enc_content = 'keyid=p256dh;dh=' + options.dh;
                     if (options.encr_header == "crypto-key" && vapid_headers) {
                         // add the vapid info
@@ -430,27 +430,27 @@
                                                         })
                                                         .catch(err => {
                                                             show_err(msg +
-                                                                    "<br>ECDSA key derivation not supported.<br>" +
-                                                                    err.toString());
+                                                                    "<br>ECDSA key derivation not supported.<br>",
+                                                                    err);
                                                         });
                                             })
                                             .catch(err => {
                                                 show_err(msg +
-                                                        "<br>Raw key import not supported.</br>" +
-                                                        err.toString());
+                                                        "<br>Raw key import not supported.</br>",
+                                                        err);
                                             });
                                 })
                                 .catch(err => {
                                     show_err(msg +
-                                            "<br>Raw key export not supported.<br>" +
-                                            err.toString());
+                                            "<br>Raw key export not supported.<br>",
+                                            err);
                                 });
                     })
                     .catch(err => {
-                        show_err(msg + "<br>Preflight failed</br>" + err.toString());
+                        show_err(msg + "<br>Preflight failed</br>", err);
                     });
         } catch (e) {
-            show_err(msg + "<br>" + e.toString());
+            show_err(msg, e);
             return false;
         }
         activate("pre");
