@@ -5,6 +5,8 @@
     <title>Web Push: Automatic Test Page</title>
     <link href="style.css" rel="stylesheet"/>
     <link href="manifest.json" rel="manifest"/>
+    <meta name="viewport" content="width=device-width">
+    <meta name="viewport" content="initial-scale=1.0">
 </head>
 <body>
 <div id="error" class="hidden"></div>
@@ -33,15 +35,28 @@
     var mzcc = new MozCommon();
     var vapid = new VapidToken(mzcc = mzcc);
     var data = {};
+    var test_states = {
+        "pre": false,
+        "reg": false,
+        "sub": false,
+        "gen": false,
+        "vap": false,
+        "enc": false,
+        "snd": false,
+        "rcv": false,
+        "dec": false,
+    };
+    var errs = [];
     reset();
 
 
     function activate(id) {
         try {
             document.getElementById(id).classList.toggle("undone");
+            test_states[id] = true;
         }
         catch (e) {
-            show_err("activate", e);
+            show_err("Activate failed: " + e.message);
         }
     }
 
@@ -53,19 +68,45 @@
                 });
     }
 
+    function show_results() {
+        let currentLocation = window.location;
+        let status = [];
+        // polyfill for .keys()
+        for (let k in test_states) {
+            if (test_states.hasOwnProperty(k)) {
+                status.push(`${encodeURI(k)}=${encodeURI(test_states[k])}`)
+            }
+        }
+        let state = status.join('&');
+        let err_list = `errs=[${errs.join(', ')}]`;
+        let ok = 'Success';
+        if (errs.length == 0) {
+            ok = 'Failure';
+        }
+        window.history.replaceState({}, ok, `
+            ${currentLocation.pathname}?${state}&${err_list}`);
+    }
 
     function show_err(msg, e) {
         let err = document.getElementById("error");
+        let estr;
+        if (msg == undefined) {
+            msg = "";
+        }
         if (msg == false) {
             err.classList.add("hidden");
             err.innerHTML = '';
         } else {
-            err.innerHTML = msg + " " + e.toString();
+            if (e != undefined) {
+                msg =`${msg} -> ${e.message}`;
+            }
+            err.innerHTML = msg;
             err.classList.remove("hidden");
         }
-        console.error(msg, e);
-        document.getElementById("boo").play()
-        throw new Error(e);
+        console.error(msg);
+        errs.push(encodeURI(`"${msg}"`));
+        show_results();
+        document.getElementById("boo").play();
     }
 
 
@@ -90,7 +131,7 @@
                                                 "<br>The page can also be served from `localhost'.");
                                         return
                                     }
-                                    console.error("Error", err);
+                                    show_err(err.message);
                                 });
                     }
                     activate("reg");
@@ -98,7 +139,7 @@
                 })
                 .catch(function (err) {
                     let msg = "Registration Error: Could not start.";
-                    show_err(msg, err);
+                    show_err(msg);
                 });
     }
 
@@ -141,7 +182,7 @@
                             .then(function (subscription_info) {
                                 activate("sub");
                                 if (!subscription_info.endpoint) {
-                                    console.error("Subscription doesn't have an " +
+                                    show_err("Subscription doesn't have an " +
                                             "endpoint. Aborting.");
                                     let err = new Error();
                                     err.name = "NoEndpoint";
@@ -149,7 +190,7 @@
                                     throw err;
                                 }
                                 if (!subscription_info.getKey) {
-                                    console.error("Subscription doesn't allow " +
+                                    show_err("Subscription doesn't allow " +
                                             "data encryption. Aborting.");
                                     let err = new Error();
                                     err.name = "NoData";
@@ -179,7 +220,6 @@
                                     delete(headers.publicKey);
                                     add_vapid();
                                 }).then(_ => subscription_info);
-                                return subscription_info;
                             })
                             .catch(function (err) {
                                 show_err(err.message);
@@ -192,7 +232,7 @@
                                 "<br>The page can also be served from `localhost'.", err);
                         return
                     }
-                    show_err("Registration Error: ", msg);
+                    show_err("Registration Error");
                 });
 
     }
@@ -308,7 +348,7 @@
                     return send(options);
                 })
                 .catch(e => {
-                    console.error("Error:", e);
+                    show_err("Error:", e);
                 });
     }
 
@@ -322,6 +362,7 @@
             let source = data["msg"];
             if (source == event.data.content) {
                 activate("dec");
+                show_results();
             }
             notify("Got message", event.data.content);
             document.getElementById("ring").play();
@@ -368,18 +409,21 @@
             activate("vap");
             encrypt(data)
         })
-                .catch(err => {
-                    console.error(err)
-                });
+        .catch(err => {
+            show_err(err)
+        });
     }
 
     function preflight() {
         // Check that this browser can do all we're going to ask of it.
-        try {
+        return new Promise(
+            function (resolve, reject) {
+
             let msg = "This browser is not yet ready to support Webpush data. ";
             msg = "<br>See <a href=\"https://developer.mozilla.org/en-US/docs/" +
                     "Web/API/SubtleCrypto/exportKey#Browser_compatibility\">" +
                     "Browser Compatibility List</a> for currently supported browsers";
+
             let webCrypto = window.crypto.subtle;
             var pfkeys;
             /* First, let's check that ECDH is supported. We'll need that
@@ -426,40 +470,43 @@
                                                         256)
                                                         .then(derived => {
                                                             console.debug("Preflight is Ok");
-                                                            return true;
+                                                            resolve("ok")
                                                         })
                                                         .catch(err => {
                                                             show_err(msg +
                                                                     "<br>ECDSA key derivation not supported.<br>",
                                                                     err);
+                                                            reject();
                                                         });
                                             })
                                             .catch(err => {
                                                 show_err(msg +
                                                         "<br>Raw key import not supported.</br>",
                                                         err);
+                                                reject();
                                             });
                                 })
                                 .catch(err => {
                                     show_err(msg +
                                             "<br>Raw key export not supported.<br>",
                                             err);
+                                    reject();
                                 });
                     })
                     .catch(err => {
                         show_err(msg + "<br>Preflight failed</br>", err);
+                        reject();
                     });
-        } catch (e) {
-            show_err(msg, e);
-            return false;
-        }
-        activate("pre");
+        })
+        .then(x => activate("pre"))
     }
 
-    preflight();
-
-    init_vapid().then(register).catch(e =>
-            show_err("Could not generate VAPID keys: " + e.message)
-    );
+    let ff = init_vapid();
+    ff.then(register())
+        .then(preflight()
+                .catch(x => {console.error(x);}))
+        .catch(e => {
+            show_err("Could not generate VAPID keys: " + e.message);
+        })
 </script>
 </html>
