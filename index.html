@@ -4,7 +4,6 @@
     <meta charset="utf-8"/>
     <title>Web Push: Automatic Test Page</title>
     <link href="style.css" rel="stylesheet"/>
-    <link href="manifest.json" rel="manifest"/>
     <meta name="viewport" content="width=device-width">
     <meta name="viewport" content="initial-scale=1.0">
 </head>
@@ -21,8 +20,8 @@
     <li id="rcv">Received Data</li>
     <li id="dec">Data decrypted</li>
 </ul>
-<audio src="firefox.mp3" id="ring"/>
-<audio src="error.mp3" id="boo"/>
+<audio src="firefox.mp3" id="ring"></audio>
+<audio src="error.mp3" id="boo"></audio>
 </body>
 <script src="common.js"></script>
 <script src="der_lite.js"></script>
@@ -32,10 +31,10 @@
 <script>
     'use strict';
 
-    var mzcc = new MozCommon();
-    var vapid = new VapidToken(mzcc = mzcc);
-    var data = {};
-    var test_states = {
+    let mzcc = new MozCommon();
+    let vapid = new VapidToken(null, null, mzcc);
+    let data = {};
+    let test_states = {
         "pre": false,
         "reg": false,
         "sub": false,
@@ -46,7 +45,7 @@
         "rcv": false,
         "dec": false,
     };
-    var errs = [];
+    let errs = [];
     reset();
 
 
@@ -61,7 +60,7 @@
     }
 
     function notify(title, body) {
-        let notif = new Notification(title,
+        new Notification(title,
                 {
                     body: body,
                     icon: "icon.png",
@@ -89,7 +88,6 @@
 
     function show_err(msg, e) {
         let err = document.getElementById("error");
-        let estr;
         if (msg == undefined) {
             msg = "";
         }
@@ -98,7 +96,7 @@
             err.innerHTML = '';
         } else {
             if (e != undefined) {
-                msg =`${msg} -> ${e.message}`;
+                msg = `${msg} -> ${e.message}`;
             }
             err.innerHTML = msg;
             err.classList.remove("hidden");
@@ -116,30 +114,20 @@
          "localhost" or from a TLS secured site (e.g. https://example.com)
 
          */
-        return navigator.serviceWorker.getRegistration()
-                .then(function (registration) {
-                    if (!registration || !navigator.serviceWorker.controller) {
-                        return navigator.serviceWorker.register("sw.js")
-                                .then(function () {
-                                    console.log("Service worker loaded, reloading");
-                                    window.location.reload();
-                                })
-                                .catch(function (err) {
-                                    if (err.name == "SecurityError" || err.name == "NotSupportedError") {
-                                        show_err("Could not start.<br>This page requires a secure " +
-                                                "server. (e.g. one that can serve https:// pages). " +
-                                                "<br>The page can also be served from `localhost'.");
-                                        return
-                                    }
-                                    show_err(err.message);
-                                });
-                    }
+        return navigator.serviceWorker.register("sw.js")
+                .then(function () {
+                    console.log("Service worker loaded, reloading");
                     activate("reg");
-                    return subscribe(appServerKey);
                 })
+                .then(subscribe(appServerKey))
                 .catch(function (err) {
-                    let msg = "Registration Error: Could not start.";
-                    show_err(msg);
+                    if (err.name == "SecurityError" || err.name == "NotSupportedError") {
+                        show_err("Could not start.<br>This page requires a secure " +
+                                "server. (e.g. one that can serve https:// pages). " +
+                                "<br>The page can also be served from `localhost'.");
+                        return
+                    }
+                    show_err(err.message);
                 });
     }
 
@@ -173,12 +161,13 @@
 
                     console.debug("Registering...", registration);
                     // Get the subscription info.
-                    return registration.pushManager.getSubscription().then(subscription => {
-                        if (subscription) {
-                            return subscription.unsubscribe().then(resubscribe);
-                        }
-                        return resubscribe();
-                    })
+                    return registration.pushManager.getSubscription()
+                            .then(subscription => {
+                                if (subscription) {
+                                    return subscription.unsubscribe().then(resubscribe);
+                                }
+                                return resubscribe();
+                            })
                             .then(function (subscription_info) {
                                 activate("sub");
                                 if (!subscription_info.endpoint) {
@@ -198,8 +187,7 @@
                                     throw err;
                                 }
                                 data['endpoint'] = subscription_info.endpoint;
-                                let rkey = base64url.encode(subscription_info.getKey('p256dh'));
-                                data['receiverKey'] = rkey;
+                                data['receiverKey'] = base64url.encode(subscription_info.getKey('p256dh'));
                                 data['salt'] = base64url.encode(crypto.getRandomValues(
                                         new Uint8Array(16)));
                                 data['subscription_info'] = subscription_info;
@@ -240,7 +228,7 @@
         data = {
             "msg": "Amidst the mists and coldest frosts, I thrust my fists " +
             "against the posts, and still demand to see the ghosts."
-        }
+        };
         for (let x of document.getElementById("steps").getElementsByTagName("li")) {
             x.classList.toggle("done");
         }
@@ -290,27 +278,16 @@
                     }
                     // Populate the extra fields
                     data['osalt'] = base64url.encode(options.salt);
-                    data['odh', options.dh];
+                    data['odh'] = options.dh;
                     let rawStr = '';
                     // Construct the curl. Remember, this needs to
                     // write a binary file first, then have curl read that file.
                     // This is because putting the data "inline" can fail.
                     let sbody = '';
-                    let ebody = '';
-                    let cbody = '';
-                    for (let k in options.payload) {
-                        let ik = parseInt(k);
+                    for (let k of options.payload) {
                         let ij = parseInt(options.payload[k]);
                         let cj = ("00" + ij.toString(16)).slice(-2, 4);
                         sbody += `\\x${cj}`;
-                        cbody += String.fromCodePoint(ij);
-                        ebody += cj;
-                        if ((ik + 1) % 2 == 0) {
-                            ebody += " ";
-                        }
-                        if ((ik + 1) % 16 == 0) {
-                            ebody += "<br>";
-                        }
                     }
                     rawStr += 'echo -ne "' + sbody + '" > encrypted.data;';
                     // dump the raw curl to console.log. This is useful for
@@ -335,8 +312,6 @@
                     rawStr += ' --data-binary @encrypted.data';
                     console.log(rawStr);
 
-                    data['curl'] = rawStr;
-                    data['odata'] = ebody;
                     if (vapid_headers) {
                         Object.keys(vapid_headers).forEach(name => {
                             let headers = [options.headers.get(name)];
@@ -409,104 +384,108 @@
             activate("vap");
             encrypt(data)
         })
-        .catch(err => {
-            show_err(err)
-        });
+                .catch(err => {
+                    show_err(err)
+                });
     }
 
     function preflight() {
         // Check that this browser can do all we're going to ask of it.
         return new Promise(
-            function (resolve, reject) {
+                function (resolve, reject) {
 
-            let msg = "This browser is not yet ready to support Webpush data. ";
-            msg = "<br>See <a href=\"https://developer.mozilla.org/en-US/docs/" +
-                    "Web/API/SubtleCrypto/exportKey#Browser_compatibility\">" +
-                    "Browser Compatibility List</a> for currently supported browsers";
+                    let msg = "This browser is not yet ready to support Webpush data. ";
+                    msg = "<br>See <a href=\"https://developer.mozilla.org/en-US/docs/" +
+                            "Web/API/SubtleCrypto/exportKey#Browser_compatibility\">" +
+                            "Browser Compatibility List</a> for currently supported browsers";
 
-            let webCrypto = window.crypto.subtle;
-            var pfkeys;
-            /* First, let's check that ECDH is supported. We'll need that
-             * for pretty much everything.
-             */
-            webCrypto.generateKey(
-                    {name: "ECDH", namedCurve: "P-256"},
-                    true,
-                    ["deriveBits"])
-                    .then(new_keys => {
-                        /* Neat, now on to 'raw' key format. Raw keys are used
-                         * for things like the Crypto Key values. It's possible to
-                         * fake them (see common.js JWKToRaw) but there are lots
-                         * of potential bugs in that approach.
-                         */
-                        pfkeys = new_keys;
-                        webCrypto.exportKey('raw', pfkeys.publicKey)
-                                .then(key => {
-                                    /* Can we import a public key for key bit derivation?
-                                     * This is used by signing mechanisms like VAPID and
-                                     * data sends. Again, possible to fake, but introduces
-                                     * more bugs than it solves.
-                                     */
-                                    webCrypto.importKey(
-                                            'raw',
-                                            key,
-                                            {name: "ECDH", namedCurve: "P-256"},
-                                            true,
-                                            ['deriveBits'])
-                                            .then(key => {
-                                                /* And finally, can we derive bits from the
-                                                 * imported key and the private key? This is
-                                                 * the core of ECDSA. If it fails, yeah, nothing
-                                                 * is ever going to work. Christmas is ruined
-                                                 * forever, etc.
-                                                 */
-                                                webCrypto.deriveBits(
-                                                        {
-                                                            name: "ECDH",
-                                                            namedCurve: "P-256",
-                                                            public: key
-                                                        },
-                                                        pfkeys.privateKey,
-                                                        256)
-                                                        .then(derived => {
-                                                            console.debug("Preflight is Ok");
-                                                            resolve("ok")
-                                                        })
-                                                        .catch(err => {
-                                                            show_err(msg +
-                                                                    "<br>ECDSA key derivation not supported.<br>",
-                                                                    err);
-                                                            reject();
-                                                        });
-                                            })
-                                            .catch(err => {
-                                                show_err(msg +
-                                                        "<br>Raw key import not supported.</br>",
-                                                        err);
-                                                reject();
-                                            });
-                                })
-                                .catch(err => {
-                                    show_err(msg +
-                                            "<br>Raw key export not supported.<br>",
-                                            err);
-                                    reject();
-                                });
-                    })
-                    .catch(err => {
-                        show_err(msg + "<br>Preflight failed</br>", err);
-                        reject();
-                    });
-        })
-        .then(x => activate("pre"))
+                    let webCrypto = window.crypto.subtle;
+                    let pfkeys;
+                    /* First, let's check that ECDH is supported. We'll need that
+                     * for pretty much everything.
+                     */
+                    webCrypto.generateKey(
+                            {name: "ECDH", namedCurve: "P-256"},
+                            true,
+                            ["deriveBits"])
+                            .then(new_keys => {
+                                /* Neat, now on to 'raw' key format. Raw keys are used
+                                 * for things like the Crypto Key values. It's possible to
+                                 * fake them (see common.js JWKToRaw) but there are lots
+                                 * of potential bugs in that approach.
+                                 */
+                                pfkeys = new_keys;
+                                webCrypto.exportKey('raw', pfkeys.publicKey)
+                                        .then(key => {
+                                            /* Can we import a public key for key bit derivation?
+                                             * This is used by signing mechanisms like VAPID and
+                                             * data sends. Again, possible to fake, but introduces
+                                             * more bugs than it solves.
+                                             */
+                                            webCrypto.importKey(
+                                                    'raw',
+                                                    key,
+                                                    {name: "ECDH", namedCurve: "P-256"},
+                                                    true,
+                                                    ['deriveBits'])
+                                                    .then(key => {
+                                                        /* And finally, can we derive bits from the
+                                                         * imported key and the private key? This is
+                                                         * the core of ECDSA. If it fails, yeah, nothing
+                                                         * is ever going to work. Christmas is ruined
+                                                         * forever, etc.
+                                                         */
+                                                        webCrypto.deriveBits(
+                                                                {
+                                                                    "name": "ECDH",
+                                                                    "namedCurve": "P-256",
+                                                                    "public": key
+                                                                },
+                                                                pfkeys.privateKey,
+                                                                256)
+                                                                .then(function(){
+                                                                    console.debug("Preflight is Ok");
+                                                                    resolve("ok")
+                                                                })
+                                                                .catch(err => {
+                                                                    show_err(msg +
+                                                                            "<br>ECDSA key derivation not supported.<br>",
+                                                                            err);
+                                                                    reject();
+                                                                });
+                                                    })
+                                                    .catch(err => {
+                                                        show_err(msg +
+                                                                "<br>Raw key import not supported.</br>",
+                                                                err);
+                                                        reject();
+                                                    });
+                                        })
+                                        .catch(err => {
+                                            show_err(msg +
+                                                    "<br>Raw key export not supported.<br>",
+                                                    err);
+                                            reject();
+                                        });
+                            })
+                            .catch(err => {
+                                show_err(msg + "<br>Preflight failed</br>", err);
+                                reject();
+                            });
+                })
+                .then(x => activate("pre"))
     }
 
     let ff = init_vapid();
     ff.then(register())
-        .then(preflight()
-                .catch(x => {console.error(x);}))
-        .catch(e => {
-            show_err("Could not generate VAPID keys: " + e.message);
-        })
+            .then(function() {
+                preflight()
+                        .catch(x => {
+                            console.error(x);
+                        })
+            })
+            .catch(e => {
+                show_err("Could not generate VAPID keys: " + e.message);
+            })
 </script>
 </html>

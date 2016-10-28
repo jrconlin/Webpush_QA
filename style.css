@@ -61,6 +61,7 @@ ul {
     list-style: none;
     margin-left: 2em;
 }
+
 li:before {
     content: "\2610 ";
     color: red;

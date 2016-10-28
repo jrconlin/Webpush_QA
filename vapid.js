@@ -11,11 +11,11 @@ try {
         webCrypto = window.crypto.subtle;
     }
 } catch (e) {
-    var webCrypto = window.crypto.subtle;
+    webCrypto = window.crypto.subtle;
 }
 
 class VapidToken {
-    constructor(sub, exp, lang, mzcc) {
+    constructor(sub, exp, mzcc) {
         /* Construct a base VAPID token.
          *
          * VAPID allows for self identification of a subscription update.
@@ -30,7 +30,7 @@ class VapidToken {
             mzcc = new MozCommon();
         }
         this.mzcc = mzcc;
-        this._claims={};
+        this._claims = {};
         if (sub !== undefined) {
             this._claims['sub'] = sub;
         }
@@ -38,8 +38,8 @@ class VapidToken {
             // Set expry to be 24 hours from now.
             exp = (Date.now() * .001) + 86400
         }
-        this._claims["exp"] = exp
-        let enus = {
+        this._claims["exp"] = exp;
+        this.lang = {
             info: {
                 OK_VAPID_KEYS: "VAPID Keys defined.",
             },
@@ -56,30 +56,29 @@ class VapidToken {
                 ERR_VERIFY: "Verify error",
             }
         };
-        this.lang = enus;
 
-        this._private_key =  "";
+        this._private_key = "";
         this._public_key = "";
 
     }
 
     generate_keys() {
-       /* Generate the public and private keys
-        */
-       return webCrypto.generateKey(
-          {name: "ECDSA", namedCurve: "P-256"},
-          true,
-          ["sign", "verify"])
-           .then(keys => {
-              this._private_key = keys.privateKey;
-              this._public_key = keys.publicKey;
-              console.info(this.lang.info.OK_VAPID_KEYS);
-              return keys;
-           })
-           .catch(fail => {
-               console.error(this.lang.errs.ERR_VAPID_KEY, fail);
-               throw(fail);
-               });
+        /* Generate the public and private keys
+         */
+        return webCrypto.generateKey(
+            {name: "ECDSA", namedCurve: "P-256"},
+            true,
+            ["sign", "verify"])
+            .then(keys => {
+                this._private_key = keys.privateKey;
+                this._public_key = keys.publicKey;
+                console.info(this.lang.info.OK_VAPID_KEYS);
+                return keys;
+            })
+            .catch(fail => {
+                console.error(this.lang.errs.ERR_VAPID_KEY, fail);
+                throw(fail);
+            });
     }
 
     export_public_raw() {
@@ -90,7 +89,7 @@ class VapidToken {
          * NOTE: Chrome 52 does not yet support RAW keys
          */
         return webCrypto.exportKey('jwk', this._public_key)
-            .then( key => {
+            .then(key => {
                 return this.mzcc.toUrlBase64("\x04" +
                     this.mzcc.fromUrlBase64(key.x) +
                     this.mzcc.fromUrlBase64(key.y))
@@ -117,11 +116,11 @@ class VapidToken {
             throw err;
         }
 
-        raw= raw.slice(-64);
+        raw = raw.slice(-64);
         let x = this.mzcc.toUrlBase64(String.fromCharCode.apply(null,
-             raw.slice(0,32)));
+            raw.slice(0, 32)));
         let y = this.mzcc.toUrlBase64(String.fromCharCode.apply(null,
-             raw.slice(32,64)));
+            raw.slice(32, 64)));
 
         // Convert to a JWK and import it.
         let jwk = {
@@ -138,7 +137,6 @@ class VapidToken {
     }
 
 
-
     sign(claims) {
         /* Sign a claims object and return the headers that can be used to
          * decrypt the string.
@@ -146,22 +144,22 @@ class VapidToken {
          * :param claims: An object containing the VAPID claims.
          * :returns: a promise containing an object identifying the headers
          * and values to include to specify VAPID auth.
-        */
-        if (! claims) {
+         */
+        if (!claims) {
             claims = this._claims;
         }
         if (this._public_key == "") {
             throw new Error(this.lang.errs.ERR_NO_KEYS);
         }
-        if (! claims.hasOwnProperty("exp")) {
-            claims.exp = parseInt(Date.now()*.001) + 86400;
+        if (!claims.hasOwnProperty("exp")) {
+            claims.exp = parseInt(Date.now() * .001) + 86400;
         }
-        if (! claims.hasOwnProperty("sub")) {
+        if (!claims.hasOwnProperty("sub")) {
             throw new Error(this.lang.errs.ERR_CLAIM_MIS, "sub");
         }
-        let alg = {name:"ECDSA", namedCurve: "P-256", hash:{name:"SHA-256"}};
+        let alg = {name: "ECDSA", namedCurve: "P-256", hash: {name: "SHA-256"}};
         let headStr = this.mzcc.toUrlBase64(
-            JSON.stringify({typ:"JWT",alg:"ES256"}));
+            JSON.stringify({typ: "JWT", alg: "ES256"}));
         let claimStr = this.mzcc.toUrlBase64(
             JSON.stringify(claims));
         let content = headStr + "." + claimStr;
@@ -183,7 +181,7 @@ class VapidToken {
                  *
                  */
                 return this.export_public_raw()
-                    .then( pubKey => {
+                    .then(pubKey => {
                         return {
                             authorization: "Bearer " + content + "." + sig,
                             "crypto-key": "p256ecdsa=" + pubKey,
@@ -196,7 +194,7 @@ class VapidToken {
             })
     }
 
-    verify(token, public_key=null) {
+    verify(token, public_key = null) {
         /* Verify a VAPID token.
          *
          * Token is the Authorization Header, Public Key is the Crypto-Key
@@ -234,11 +232,12 @@ class VapidToken {
             throw new Error(this.lang.errs.ERR_NO_KEYS);
         }
 
-        let alg = {name: "ECDSA", namedCurve: "P-256",
-                   hash: {name: "SHA-256" }};
+        let alg = {
+            name: "ECDSA", namedCurve: "P-256",
+            hash: {name: "SHA-256"}
+        };
         let items = token.split('.');
         let signature;
-        let key;
         try {
             signature = this.mzcc.strToArray(
                 this.mzcc.fromUrlBase64(items[2]));
@@ -246,31 +245,31 @@ class VapidToken {
             throw new Error(this.lang.errs.ERR_VERIFY_SG + err.message);
         }
         try {
-            key = this.mzcc.strToArray(this.mzcc.fromUrlBase64(items[1]));
+            this.mzcc.strToArray(this.mzcc.fromUrlBase64(items[1]));
         } catch (err) {
             throw new Error(this.lang.errs.ERR_VERIFY_KE + err.message);
         }
-        let content = items.slice(0,2).join('.');
+        let content = items.slice(0, 2).join('.');
         let signatory = this.mzcc.strToArray(content);
         return webCrypto.verify(
             alg,
             this._public_key,
             signature,
             signatory)
-           .then(valid => {
-               if (valid) {
-                   return JSON.parse(
+            .then(valid => {
+                if (valid) {
+                    return JSON.parse(
                         String.fromCharCode.apply(
                             null,
                             this.mzcc.strToArray(
                                 this.mzcc.fromUrlBase64(items[1]))))
-               }
-               throw new Error(this.lang.errs.ERR_SIGNATURE);
-           })
-           .catch(err => {
-               console.error(this.lang.errs.ERR_VERIFY, err);
-               throw new Error (this.lang.errs.ERR_VERIFY + ": " + err.message);
-           });
+                }
+                throw new Error(this.lang.errs.ERR_SIGNATURE);
+            })
+            .catch(err => {
+                console.error(this.lang.errs.ERR_VERIFY, err);
+                throw new Error(this.lang.errs.ERR_VERIFY + ": " + err.message);
+            });
     }
 
     /* The following are for the Dashboard key ownership validation steps.
@@ -290,12 +289,11 @@ class VapidToken {
          *  function
          * :returns: the signature value to paste back into the Dashboard.
          */
-        let alg = {name:"ECDSA", namedCurve: "P-256", hash:{name:"SHA-256"}};
+        let alg = {name: "ECDSA", namedCurve: "P-256", hash: {name: "SHA-256"}};
         let t2v = this.mzcc.strToArray(string);
         return webCrypto.sign(alg, this._private_key, t2v)
             .then(signed => {
-                let sig = this.mzcc.toUrlBase64(this.mzcc.arrayToStr(signed));
-                return sig;
+                return this.mzcc.toUrlBase64(this.mzcc.arrayToStr(signed));
             });
     }
 
@@ -308,7 +306,7 @@ class VapidToken {
          * :param string: The token string originally passed to validate
          * :returns: Boolean indicating successful verification.
          */
-        let alg = {name: "ECDSA", namedCurve: "P-256", hash:{name:"SHA-256"}};
+        let alg = {name: "ECDSA", namedCurve: "P-256", hash: {name: "SHA-256"}};
         let vsig = this.mzcc.strToArray(this.mzcc.fromUrlBase64(sig));
         let t2v = this.mzcc.strToArray(this.mzcc.fromUrlBase64(string));
         return webCrypto.verify(alg, this._public_key, vsig, t2v);

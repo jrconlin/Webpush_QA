@@ -4,11 +4,11 @@
  */
 'use strict';
 
-self.addEventListener('push', function(event)  {
+self.addEventListener('push', function (event) {
     /* Push events arrive when a push message is received.
-       They should include a .data component that is the decrypted
-       content of the message.
-    */
+     They should include a .data component that is the decrypted
+     content of the message.
+     */
     console.info("**** Recv'd a push message::", JSON.stringify(event));
 
     if (event.data) {
@@ -25,23 +25,23 @@ self.addEventListener('push', function(event)  {
         console.log("Service worker just got:", content);
         // Send the event to the parent pages.
         event.waitUntil(
-          self.clients.matchAll()
-           .then(clientList => {
-              let sent = false;
-              console.debug("Service worker found clients",
-                    JSON.stringify(clients));
-             clientList.forEach(client => {
-                 console.debug("Service worker sending to client...", client);
-                 sent = true;
-                 client.postMessage({'type':'content','content':content});
-             });
-             if (sent == false) {
-                 throw new Error("No valid client to send to.");
-             }
-           })
-           .catch(err => {
-              console.error("Service worker couldn't send message: ", err);
-           })
+            self.clients.matchAll()
+                .then(clientList => {
+                    let sent = false;
+                    console.debug("Service worker found clients",
+                        JSON.stringify(clients));
+                    clientList.forEach(client => {
+                        console.debug("Service worker sending to client...", client);
+                        sent = true;
+                        client.postMessage({'type': 'content', 'content': content});
+                    });
+                    if (sent == false) {
+                        throw new Error("No valid client to send to.");
+                    }
+                })
+                .catch(err => {
+                    console.error("Service worker couldn't send message: ", err);
+                })
         );
     }
 });
@@ -49,44 +49,44 @@ self.addEventListener('push', function(event)  {
 /* The following are other events that this service worker could respond to.
  */
 
-self.addEventListener('message', function(event) {
+self.addEventListener('message', function (event) {
     // A message has been sent to this service worker.
     console.log("sw Handling message event:", event);
 });
 
-self.addEventListener('pushsubscriptionchange', function(event) {
+self.addEventListener('pushsubscriptionchange', function (event) {
     // The Push subscription ID has changed. The App should send this
     // information back to the App Server.
     console.log("sw Push Subscription Change", event);
     event.waitUntil(
         self.clients.matchAll()
-           .then(clientList => {
-             let sent = false;
-             console.debug("Service worker found clients",
+            .then(clientList => {
+                let sent = false;
+                console.debug("Service worker found clients",
                     JSON.stringify(clients));
-             clientList.forEach(client => {
-                 console.debug("Service worker sending to client...", client);
-                 sent = true;
-                 client.postMessage({'type':'update'});
-             });
-             if (sent == false) {
-                 throw new Error("No valid client to send to.");
-             }
-           })
-           .catch(err => {
-              console.error("Service worker couldn't send message: ", err);
-           })
-        );
+                clientList.forEach(client => {
+                    console.debug("Service worker sending to client...", client);
+                    sent = true;
+                    client.postMessage({'type': 'update'});
+                });
+                if (sent == false) {
+                    throw new Error("No valid client to send to.");
+                }
+            })
+            .catch(err => {
+                console.error("Service worker couldn't send message: ", err);
+            })
+    );
 
 });
 
-self.addEventListener('registration', function(event){
+self.addEventListener('registration', function (event) {
     // The service worker has been registered.
     console.log("sw Registration: ", event);
 });
 
 
-self.addEventListener('install', function(event){
+self.addEventListener('install', function (event) {
     // The serivce worker has been loaded and installed.
     // The browser aggressively caches the service worker code.
     console.log("sw Install: ", JSON.stringify(event));
@@ -97,12 +97,11 @@ self.addEventListener('install', function(event){
 
 });
 
-self.addEventListener('activate', function(event){
+self.addEventListener('activate', function (event) {
     // The service worker is now Active and functioning.
     console.log("sw Activate : ", JSON.stringify(event));
     // Again, ensure that this is the only active service worker for this
     // page.
     event.waitUntil(self.clients.claim());
     console.log("sw Activated: ", JSON.stringify(event));
-    navigator.serviceWorker
 });
