@@ -23,6 +23,9 @@ self.addEventListener('push', function (event) {
         // Since we sent this in as text, read it out as text.
         let content = event.data.text();
         console.log("Service worker just got:", content);
+        // Display notification, because sometimes the main page won't.
+        console.debug("Registration:", registration);
+        // registration.showNotification("Got message", {body: content, icon: "icon.png"});
         // Send the event to the parent pages.
         event.waitUntil(
             self.clients.matchAll()

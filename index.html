@@ -17,8 +17,8 @@
     <li id="vap">Generate VAPID</li>
     <li id="enc">Encrypt Data</li>
     <li id="snd">Send Data</li>
-    <li id="rcv">Received Data</li>
-    <li id="dec">Data decrypted</li>
+    <li class="warn" id="rcv">Received Data</li>
+    <li class="warn" id="dec">Data decrypted</li>
 </ul>
 <audio src="firefox.mp3" id="ring"></audio>
 <audio src="error.mp3" id="boo"></audio>
@@ -186,6 +186,8 @@
                                     err.message = "Subscription does not allow data";
                                     throw err;
                                 }
+                                // dump out the JSON subscription object
+                                console.debug("Subscription info:", JSON.stringify(subscription_info.toJSON()));
                                 data['endpoint'] = subscription_info.endpoint;
                                 data['receiverKey'] = base64url.encode(subscription_info.getKey('p256dh'));
                                 data['salt'] = base64url.encode(crypto.getRandomValues(
@@ -314,9 +316,13 @@
 
                     if (vapid_headers) {
                         Object.keys(vapid_headers).forEach(name => {
-                            let headers = [options.headers.get(name)];
-                            headers.push(vapid_headers[name]);
-                            options.headers.set(name, headers.join(","));
+                            if(options.headers.get(name)) {
+                                let headers = [options.headers.get(name)];
+                                headers.push(vapid_headers[name]);
+                                options.headers.set(name, headers.join(","));
+                            } else {
+                                options.headers.set(name, vapid_headers[name]);
+                            }
                         });
                     }
                     activate("enc");
@@ -383,10 +389,9 @@
             // the demo send.
             activate("vap");
             encrypt(data)
-        })
-                .catch(err => {
-                    show_err(err)
-                });
+        }) .catch(err => {
+          show_err(err)
+        });
     }
 
     function preflight() {

@@ -183,7 +183,7 @@ class VapidToken {
                 return this.export_public_raw()
                     .then(pubKey => {
                         return {
-                            authorization: "Bearer " + content + "." + sig,
+                            authorization: "WebPush " + content + "." + sig,
                             "crypto-key": "p256ecdsa=" + pubKey,
                             publicKey: pubKey,
                         }
