@@ -314,8 +314,12 @@
 
                     if (vapid_headers) {
                         Object.keys(vapid_headers).forEach(name => {
-                            let headers = [options.headers.get(name)];
+                            let headers = [];
                             headers.push(vapid_headers[name]);
+                            let he = options.headers.get(name);
+                            if (he) {
+                                headers.push(he);
+                            }
                             options.headers.set(name, headers.join(","));
                         });
                     }
@@ -339,7 +343,7 @@
                 activate("dec");
                 show_results();
             }
-            notify("Got message", event.data.content);
+            //notify("Got message", event.data.content);
             document.getElementById("ring").play();
         }
     });
