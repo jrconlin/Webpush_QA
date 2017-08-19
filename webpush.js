@@ -390,14 +390,13 @@ function send(options) {
         .then(response => {
             activate("snd");
             if (!response.ok) {
-                if (response.status == 400) {
+                if (response.status === 400) {
                     show_err("Server returned 400. Probably " +
                         "missing headers.<br>If refreshing doesn't work " +
                         "the 'curl' call below should still work fine.",
                         new Error("Server Returned 400"));
                 }
-                throw new Error('Unable to deliver message: ',
-                    JSON.stringify(response));
+                throw new Error('Unable to deliver message: '+ response.status);
             } else {
                 console.info("Message sent", response.status)
             }
