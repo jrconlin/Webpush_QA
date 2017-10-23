@@ -30,19 +30,20 @@ self.addEventListener('push', function (event) {
             console.error("Notification Exception", e);
         }
         // Send the event to the parent pages.
-        notify('content',content, event, clients);
+        notify('content',content, event);
     }
 });
 
 /* The following are other events that this service worker could respond to.
  */
 
-function notify(type, message, event, clients) {
+function notify(type, message, event) {
     if (!type) {
         type = "alert";
     }
+    // Include all in case the parent is not yet controlled either.
     event.waitUntil(
-        clients.matchAll()
+        self.clients.matchAll({includeUncontrolled: true})
             .then(clientList => {
                 let sent = false;
                 clientList.forEach(client => {
@@ -72,7 +73,7 @@ self.addEventListener('pushsubscriptionchange', function (event) {
     // The Push subscription ID has changed. The App should send this
     // information back to the App Server.
     console.log("sw Push Subscription Change: " + JSON.stringify(event));
-    notify('update', null, event, clients);
+    notify('update', null, event);
 });
 
 self.addEventListener('registration', function (event) {
