@@ -353,7 +353,7 @@
 
     function init_vapid() {
         // Vapid should ALWAYS use it's own key set.
-        data['vapid_exp'] = parseInt(Date.now() * .001) + 86400;
+        data['vapid_exp'] = parseInt(Date.now() * .001) + 300;
         return vapid.generate_keys().then(keys => {
             let exporter = new DERLite();
             return Promise.all([
