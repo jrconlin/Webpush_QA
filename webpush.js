@@ -8,10 +8,12 @@
 'use strict';
 // Semi-handy variable defining the encryption data to be
 // Elliptical Curve (Diffie-Hellman) (ECDH) using the p256 curve.
-var P256DH = {
+const P256DH = {
     name: 'ECDH',
     namedCurve: 'P-256'
 };
+
+let webCrypto;
 
 // WebCrypto (defined by http://www.w3.org/TR/WebCryptoAPI/) is detailed
 // at https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto
@@ -32,15 +34,15 @@ try {
         webCrypto = window.crypto.subtle;
     }
 } catch (e) {
-    var webCrypto = window.crypto.subtle;
+    webCrypto = window.crypto.subtle;
 }
 
 // Per the WebPush API, there are known token values that are used for some
 // portions of the Nonce creations.
-var ENCRYPT_INFO = new TextEncoder('utf-8').encode(
+let ENCRYPT_INFO = new TextEncoder('utf-8').encode(
     "Content-Encoding: aesgcm128");
-var NONCE_INFO = new TextEncoder('utf-8').encode("Content-Encoding: nonce");
-var AUTH_INFO = new TextEncoder('utf-8').encode("Content-Encoding: auth\0");
+let NONCE_INFO = new TextEncoder('utf-8').encode("Content-Encoding: nonce");
+let AUTH_INFO = new TextEncoder('utf-8').encode("Content-Encoding: auth\0");
 
 function ensureView(data) {
     /* Coerces data into a Uint8Array */
@@ -58,7 +60,7 @@ function ensureView(data) {
 
 Promise.allMap = function (o) {
     // Resolve a list of promises
-    var result = {};
+    let result = {};
     return Promise.all(
         Object.keys(o).map(
             k => Promise.resolve(o[k]).then(r => result[k] = r)
@@ -68,8 +70,8 @@ Promise.allMap = function (o) {
 
 function generateNonce(base, index) {
     /* generate a 96-bit IV for use in GCM, 48-bits of which are populated */
-    var nonce = base.slice(0, 12);
-    for (var i = 0; i < 6; ++i) {
+    let nonce = base.slice(0, 12);
+    for (let i = 0; i < 6; ++i) {
         nonce[nonce.length - 1 - i] ^= (index / Math.pow(256, i)) & 0xff;
     }
     return nonce;
@@ -114,7 +116,7 @@ function wp_encrypt(senderKey, sub, data, salt) {
             // Now, derive a shared key from our temporary local key
             // and the remote key we just created.
             console.debug("client p256dh key:", receiverKey);
-            var args = {
+            let args = {
                 name: P256DH.name,
                 namedCurve: P256DH.namedCurve,
                 public: receiverKey
@@ -125,11 +127,11 @@ function wp_encrypt(senderKey, sub, data, salt) {
                 256)
         })
         .then(function (ikm) {
-            var kdfPromise;
-            var cEKinfo;
-            var cNinfo;
+            let kdfPromise;
+            let cEKinfo;
+            let cNinfo;
 
-            var authSecret;
+            let authSecret;
 
             // The data that feeds the HKDF uses the following
             // complex data set.
@@ -267,17 +269,16 @@ function wp_encrypt(senderKey, sub, data, salt) {
                         // Generate the Initialization Vector (iv) for this block
                         // based on the previously generated nonce and the offset
                         // of the block.
-                        var iv = generateNonce(encryptingData.nonce, index);
+                        let iv = generateNonce(encryptingData.nonce, index);
                         // output("iv", base64url.encode(iv));
                         console.debug("iv: ", new Uint8Array(iv));
-                        var edata = webCrypto.encrypt(
+                        return webCrypto.encrypt(
                             {
                                 name: 'AES-GCM',
                                 iv: iv,
                             },
                             encryptingData.key,
                             padded);
-                        return edata;
                     }));
         }).then(data=> {
             data = concatArray(data);
@@ -302,7 +303,7 @@ function webpush(subscription, data, salt) {
     console.debug("subscription", subscription);
     data = ensureView(data);
 
-    if (salt == null) {
+    if (! salt) {
         console.info("Making new salt");
         salt = newSalt();
         // output('salt', salt);
@@ -371,7 +372,6 @@ function webpush(subscription, data, salt) {
 
 function send(options) {
     console.debug('payload', options.payload);
-    let endpoint = options.endpoint;
     let send_options = {
         method: options.method,
         headers: options.headers,
@@ -390,14 +390,13 @@ function send(options) {
         .then(response => {
             activate("snd");
             if (!response.ok) {
-                if (response.status == 400) {
+                if (response.status === 400) {
                     show_err("Server returned 400. Probably " +
                         "missing headers.<br>If refreshing doesn't work " +
                         "the 'curl' call below should still work fine.",
                         new Error("Server Returned 400"));
                 }
-                throw new Error('Unable to deliver message: ',
-                    JSON.stringify(response));
+                throw new Error('Unable to deliver message: '+ response.status);
             } else {
                 console.info("Message sent", response.status)
             }

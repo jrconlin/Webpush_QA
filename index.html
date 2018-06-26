@@ -316,13 +316,13 @@
 
                     if (vapid_headers) {
                         Object.keys(vapid_headers).forEach(name => {
-                            if(options.headers.get(name)) {
-                                let headers = [options.headers.get(name)];
-                                headers.push(vapid_headers[name]);
-                                options.headers.set(name, headers.join(","));
-                            } else {
-                                options.headers.set(name, vapid_headers[name]);
+                            let headers = [];
+                            headers.push(vapid_headers[name]);
+                            let he = options.headers.get(name);
+                            if (he) {
+                                headers.push(he);
                             }
+                            options.headers.set(name, headers.join(","));
                         });
                     }
                     activate("enc");
@@ -345,7 +345,7 @@
                 activate("dec");
                 show_results();
             }
-            notify("Got message", event.data.content);
+            //notify("Got message", event.data.content);
             document.getElementById("ring").play();
         }
     });

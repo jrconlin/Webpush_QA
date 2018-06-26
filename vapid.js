@@ -26,7 +26,7 @@ class VapidToken {
          *      to now + 24 hours
          */
 
-        if (mzcc == undefined) {
+        if (! mzcc) {
             mzcc = new MozCommon();
         }
         this.mzcc = mzcc;
@@ -34,7 +34,7 @@ class VapidToken {
         if (sub !== undefined) {
             this._claims['sub'] = sub;
         }
-        if (exp == undefined) {
+        if (! exp) {
             // Set expry to be 24 hours from now.
             exp = (Date.now() * .001) + 86400
         }
@@ -106,13 +106,13 @@ class VapidToken {
          * :param raw: a URL safe base64 encoded rendition of the RAW key.
          * :returns: a promise from the imported key.
          */
-        if (typeof(raw) == "string") {
+        if (typeof(raw) === "string") {
             raw = this.mzcc.strToArray(this.mzcc.fromUrlBase64(raw));
         }
         let err = new Error(this.lang.errs.ERR_PUB_KEY);
 
         // Raw is supposed to start with a 0x04, but some libraries don't. sigh.
-        if (raw.length == 65 && raw[0] != 4) {
+        if (raw.length === 65 && raw[0] !== 4) {
             throw err;
         }
 
@@ -148,7 +148,7 @@ class VapidToken {
         if (!claims) {
             claims = this._claims;
         }
-        if (this._public_key == "") {
+        if (this._public_key === "") {
             throw new Error(this.lang.errs.ERR_NO_KEYS);
         }
         if (!claims.hasOwnProperty("exp")) {
@@ -204,12 +204,12 @@ class VapidToken {
          */
 
         // Ideally, just the bearer token, Cheat a little to be nice to the dev.
-        if (token.toLowerCase().split(" ")[0] == "bearer") {
+        if (token.toLowerCase().split(" ")[0] === "bearer") {
             token = token.split(" ")[1];
         }
 
         // Again, ideally, just the p256ecdsa token.
-        if (public_key != null) {
+        if (public_key !== null) {
 
             if (public_key.search('p256ecdsa') > -1) {
                 let sc = /p256ecdsa=([^;,]+)/i;
@@ -228,7 +228,7 @@ class VapidToken {
                     throw err;
                 });
         }
-        if (this._public_key == "") {
+        if (this._public_key === "") {
             throw new Error(this.lang.errs.ERR_NO_KEYS);
         }
 
