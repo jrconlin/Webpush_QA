@@ -72,8 +72,13 @@ li.warn:before{
     color: orange;
 }
 
-.undone:before {
+.done:before {
     content: "\2611 ";
     color: green;
     padding-right: 1em;
+}
+
+#goldstar {
+    color:gold;
+    font-size:200%;
 }

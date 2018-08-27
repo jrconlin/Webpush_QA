@@ -10,7 +10,6 @@
 <body>
 <div id="error" class="hidden"></div>
 <ul id="steps">
-    <li id="pre">Preflight</li>
     <li id="reg">Register</li>
     <li id="sub">Get Subscription</li>
     <li id="gen">Generate Data</li>
@@ -35,7 +34,6 @@
     let vapid = new VapidToken(null, null, mzcc);
     let data = {};
     let test_states = {
-        "pre": false,
         "reg": false,
         "sub": false,
         "gen": false,
@@ -51,7 +49,7 @@
 
     function activate(id) {
         try {
-            document.getElementById(id).classList.toggle("undone");
+            document.getElementById(id).classList.toggle("done");
             test_states[id] = true;
         }
         catch (e) {
@@ -77,13 +75,12 @@
             }
         }
         let state = status.join('&');
-        let err_list = `errs=[${errs.join(', ')}]`;
+        let err_list = 'errs='+JSON.stringify(errs);
         let ok = 'Success';
-        if (errs.length == 0) {
+        if (errs.length != 0) {
             ok = 'Failure';
         }
-        window.history.replaceState({}, ok, `
-            ${currentLocation.pathname}?${state}&${err_list}`);
+        window.location = ok.toLowerCase()+`.html?${state}&${err_list}`;
     }
 
     function show_err(msg, e) {
@@ -102,7 +99,7 @@
             err.classList.remove("hidden");
         }
         console.error(msg);
-        errs.push(encodeURI(`"${msg}"`));
+        errs.push(msg);
         show_results();
         document.getElementById("boo").play();
     }
@@ -204,6 +201,7 @@
                                 } catch (e) {
                                     console.warn("Crypto-Key support unavailable.");
                                 }
+                                // TODO: show qr code containing subscription info
                                 return vapid.sign({
                                     sub: "mailto:admin@example.com",
                                 }).then(headers => {
@@ -333,22 +331,25 @@
                 });
     }
 
-
-    navigator.serviceWorker.addEventListener('message', function (event) {
-        console.debug('Service Worker sent:', JSON.stringify(event.data));
-        if (event.data.type == 'content') {
-            activate("rcv");
-            // Compare what we got with the source to make sure
-            // that things worked ok.
-            let source = data["msg"];
-            if (source == event.data.content) {
-                activate("dec");
-                show_results();
+    try {
+        navigator.serviceWorker.addEventListener('message', function (event) {
+            console.debug('Service Worker sent:', JSON.stringify(event.data));
+            if (event.data.type == 'content') {
+                activate("rcv");
+                // Compare what we got with the source to make sure
+                // that things worked ok.
+                let source = data["msg"];
+                if (source == event.data.content) {
+                    activate("dec");
+                    show_results();
+                }
+                //notify("Got message", event.data.content);
+                document.getElementById("ring").play();
             }
-            //notify("Got message", event.data.content);
-            document.getElementById("ring").play();
-        }
-    });
+        });
+    } catch (e) {
+        show_err("Could not initialize, Are your using the `https` version?", e);
+    }
 
 
     function init_vapid() {
@@ -394,100 +395,10 @@
         });
     }
 
-    function preflight() {
-        // Check that this browser can do all we're going to ask of it.
-        return new Promise(
-                function (resolve, reject) {
-
-                    let msg = "This browser is not yet ready to support Webpush data. ";
-                    msg = "<br>See <a href=\"https://developer.mozilla.org/en-US/docs/" +
-                            "Web/API/SubtleCrypto/exportKey#Browser_compatibility\">" +
-                            "Browser Compatibility List</a> for currently supported browsers";
-
-                    let webCrypto = window.crypto.subtle;
-                    let pfkeys;
-                    /* First, let's check that ECDH is supported. We'll need that
-                     * for pretty much everything.
-                     */
-                    webCrypto.generateKey(
-                            {name: "ECDH", namedCurve: "P-256"},
-                            true,
-                            ["deriveBits"])
-                            .then(new_keys => {
-                                /* Neat, now on to 'raw' key format. Raw keys are used
-                                 * for things like the Crypto Key values. It's possible to
-                                 * fake them (see common.js JWKToRaw) but there are lots
-                                 * of potential bugs in that approach.
-                                 */
-                                pfkeys = new_keys;
-                                webCrypto.exportKey('raw', pfkeys.publicKey)
-                                        .then(key => {
-                                            /* Can we import a public key for key bit derivation?
-                                             * This is used by signing mechanisms like VAPID and
-                                             * data sends. Again, possible to fake, but introduces
-                                             * more bugs than it solves.
-                                             */
-                                            webCrypto.importKey(
-                                                    'raw',
-                                                    key,
-                                                    {name: "ECDH", namedCurve: "P-256"},
-                                                    true,
-                                                    ['deriveBits'])
-                                                    .then(key => {
-                                                        /* And finally, can we derive bits from the
-                                                         * imported key and the private key? This is
-                                                         * the core of ECDSA. If it fails, yeah, nothing
-                                                         * is ever going to work. Christmas is ruined
-                                                         * forever, etc.
-                                                         */
-                                                        webCrypto.deriveBits(
-                                                                {
-                                                                    "name": "ECDH",
-                                                                    "namedCurve": "P-256",
-                                                                    "public": key
-                                                                },
-                                                                pfkeys.privateKey,
-                                                                256)
-                                                                .then(function(){
-                                                                    console.debug("Preflight is Ok");
-                                                                    resolve("ok")
-                                                                })
-                                                                .catch(err => {
-                                                                    show_err(msg +
-                                                                            "<br>ECDSA key derivation not supported.<br>",
-                                                                            err);
-                                                                    reject();
-                                                                });
-                                                    })
-                                                    .catch(err => {
-                                                        show_err(msg +
-                                                                "<br>Raw key import not supported.</br>",
-                                                                err);
-                                                        reject();
-                                                    });
-                                        })
-                                        .catch(err => {
-                                            show_err(msg +
-                                                    "<br>Raw key export not supported.<br>",
-                                                    err);
-                                            reject();
-                                        });
-                            })
-                            .catch(err => {
-                                show_err(msg + "<br>Preflight failed</br>", err);
-                                reject();
-                            });
-                })
-                .then(x => activate("pre"))
-    }
-
-    let ff = init_vapid();
-    ff.then(register())
-            .then(function() {
-                preflight()
-                        .catch(x => {
-                            console.error(x);
-                        })
+    init_vapid()
+        .then(app_server_key => {
+                console.debug("apo_key", app_server_key);
+                register(app_server_key);
             })
             .catch(e => {
                 show_err("Could not generate VAPID keys: " + e.message);
