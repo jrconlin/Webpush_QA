@@ -49,7 +49,7 @@
 
     function activate(id) {
         try {
-            document.getElementById(id).classList.toggle("done");
+            document.getElementById(id).classList.add("done");
             test_states[id] = true;
         }
         catch (e) {
@@ -230,7 +230,7 @@
             "against the posts, and still demand to see the ghosts."
         };
         for (let x of document.getElementById("steps").getElementsByTagName("li")) {
-            x.classList.toggle("done");
+            x.classList.remove("done");
         }
         activate("gen");
     }

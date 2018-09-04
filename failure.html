@@ -19,7 +19,7 @@
     <li class="warn" id="rcv">Received Data</li>
     <li class="warn" id="dec">Data decrypted</li>
 </ul>
-<p><a href="/">Try Again?</a></p>
+<p><a href="/Webpush_QA/">Try Again?</a></p>
 <script>
     let res = new URLSearchParams(location.search);
     for (r of res.keys()) {
@@ -37,7 +37,9 @@
             document.getElementById("error").appendChild(errList);
             continue;
         }
-        document.getElementById(r).classList.toggle("undone");
+        if res.get(r) == "true" {
+           document.getElementById(r).classList.add("done");
+        }
     }
 </script>
 </body>
