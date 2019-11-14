@@ -10,6 +10,12 @@ body {
     background-color: #FeFeFe;
 }
 
+button {
+    padding: 50px;
+    width:100%;
+    font: bold 120% Arial;
+}
+
 div {
     min-height: 2em;
     width: 100%;

@@ -37,7 +37,7 @@
             document.getElementById("error").appendChild(errList);
             continue;
         }
-        if res.get(r) == "true" {
+        if (res.get(r) == "true") {
            document.getElementById(r).classList.add("done");
         }
     }

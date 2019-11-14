@@ -9,6 +9,7 @@
 </head>
 <body>
 <div id="error" class="hidden"></div>
+<button id="subscribe">Click to subscribe</button>
 <ul id="steps">
     <li id="reg">Register</li>
     <li id="sub">Get Subscription</li>
@@ -137,35 +138,32 @@
          it's doing.
          */
         return navigator.serviceWorker.getRegistration()
-                .then(function (registration) {
-                    /* The service worker script has been loaded, so
-                     now we need to register for an endpoint.
+            .then((registration) => {
+                /* The service worker script has been loaded, so
+                    now we need to register for an endpoint.
 
-                     Normally, you only need to register once, the first
-                     time that you ever load a given app or page.
+                    Normally, you only need to register once, the first
+                    time that you ever load a given app or page.
 
-                     */
-                    function resubscribe() {
-                        return registration.pushManager.subscribe({
+                    */
+                function resub() {
+                    let options = {
                             // Set this to be "true" if you're only displaying
                             // the data to the user. Set it to "false" if you
                             // want to use this notification internally and not
                             // display a message.
                             userVisibleOnly: false,
                             applicationServerKey: appServerKey,
-                        });
-                    }
+                        };
 
                     console.debug("Registering...", registration);
                     // Get the subscription info.
-                    return registration.pushManager.getSubscription()
-                            .then(subscription => {
-                                if (subscription) {
-                                    return subscription.unsubscribe().then(resubscribe);
-                                }
-                                return resubscribe();
-                            })
-                            .then(function (subscription_info) {
+                    return document.getElementById("subscribe").addEventListener("click", () => {
+                        console.debug("asking permission");
+                        return Notification.requestPermission().then( (sss) => {
+                            console.debug(sss);
+                            registration.pushManager.subscribe(options).then(
+                                (subscription_info) => {
                                 activate("sub");
                                 if (!subscription_info.endpoint) {
                                     show_err("Subscription doesn't have an " +
@@ -201,7 +199,6 @@
                                 } catch (e) {
                                     console.warn("Crypto-Key support unavailable.");
                                 }
-                                // TODO: show qr code containing subscription info
                                 return vapid.sign({
                                     sub: "mailto:admin@example.com",
                                 }).then(headers => {
@@ -211,17 +208,26 @@
                             })
                             .catch(function (err) {
                                 show_err(err.message);
-                            });
-                })
-                .catch(function (err) {
-                    if (err.name == "SecurityError" || err.name == "NotSupportedError") {
-                        show_err("Could not start.<br>This page requires a secure " +
-                                "server. (e.g. one that can serve https:// pages). " +
-                                "<br>The page can also be served from `localhost'.", err);
-                        return
+                            })
+                        })
+                    })
+                }
+                registration.pushManager.getSubscription().then((subscription) => {
+                    if (subscription) {
+                        return subscription.unsubscribe().then(resub);
                     }
-                    show_err("Registration Error");
+                    return resub()
                 });
+            })
+            .catch(function (err) {
+                if (err.name == "SecurityError" || err.name == "NotSupportedError") {
+                    show_err("Could not start.<br>This page requires a secure " +
+                            "server. (e.g. one that can serve https:// pages). " +
+                            "<br>The page can also be served from `localhost'.", err);
+                    return
+                }
+                show_err("Registration Error");
+            });
 
     }
     function reset() {
