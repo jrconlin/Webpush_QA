@@ -117,7 +117,6 @@
                     console.log("Service worker loaded, reloading");
                     activate("reg");
                 })
-                .then(subscribe(appServerKey))
                 .catch(function (err) {
                     if (err.name == "SecurityError" || err.name == "NotSupportedError") {
                         show_err("Could not start.<br>This page requires a secure " +
@@ -138,6 +137,9 @@
          it's doing.
          */
         return navigator.serviceWorker.getRegistration()
+            .catch(function(err) {
+                console.error(err);
+            })
             .then((registration) => {
                 /* The service worker script has been loaded, so
                     now we need to register for an endpoint.
@@ -199,11 +201,14 @@
                                 } catch (e) {
                                     console.warn("Crypto-Key support unavailable.");
                                 }
+                                let parsed = new URL(subscription_info.endpoint);
                                 return vapid.sign({
                                     sub: "mailto:admin@example.com",
+                                    aud: parsed.origin,
+                                    exp: (parseInt(Date.now() * .001) + 300).toString()
                                 }).then(headers => {
                                     delete(headers.publicKey);
-                                    add_vapid();
+                                    add_vapid(subscription_info);
                                 }).then(_ => subscription_info);
                             })
                             .catch(function (err) {
@@ -217,6 +222,8 @@
                         return subscription.unsubscribe().then(resub);
                     }
                     return resub()
+                }).catch(function (err) {
+                    console.error(err);
                 });
             })
             .catch(function (err) {
@@ -382,7 +389,11 @@
          See vapid.js for how this is built using Javascript.
          (I'll note that it's MUCH easier using other languages like python or java.)
          */
-        let claims = {"sub": "mailto:admin@example.com"};
+        let claims = {
+            "aud": new URL(data.endpoint).origin,
+            "exp": ((Date.now() * .001) + 300).toString(),
+            "sub": "mailto:admin@example.com"
+        };
         let vapid_err = "";
         document.getElementById("error").innerHTML = vapid_err;
         if (vapid_err) {
@@ -402,9 +413,13 @@
     }
 
     init_vapid()
+        .catch(function(err){
+            console.error(err)
+        })
         .then(app_server_key => {
                 console.debug("apo_key", app_server_key);
                 register(app_server_key);
+                subscribe(app_server_key);
             })
             .catch(e => {
                 show_err("Could not generate VAPID keys: " + e.message);

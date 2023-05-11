@@ -1,11 +1,11 @@
 'use strict';
 
-class DERLite {
+class DERLite{
     constructor(mzcc) {
         if (mzcc === undefined) {
             mzcc = new MozCommon();
         }
-        this.mzcc = mzcc;
+        this.mzcc = mzcc
     }
 
     /* Simplified DER export and import is provided because a large number of
@@ -66,26 +66,25 @@ class DERLite {
          */
         let der = this.mzcc.strToArray(this.mzcc.fromUrlBase64(der_str));
         // quick guantlet to see if this is a valid DER
-        let cmp = new Uint8Array([2, 1, 1, 4]);
-        if (der[0] != 48 || !der.slice(2, 6).every(function (v, i) {
-                return cmp[i] == v
-            })) {
+        let cmp = new Uint8Array([2,1,1,4]);
+        if (der[0] != 48 ||
+            ! der.slice(2, 6).every(function(v, i){return cmp[i] == v})){
             throw new Error("Invalid import key")
         }
-        let dv = der.slice(7, 7 + der[6]);
+        let dv = der.slice(7, 7+der[6]);
         // HUGE cheat to get the x y values
         let xv = der.slice(-64, -32);
         let yv = der.slice(-32);
         let key_ops = ['sign'];
 
         let jwk = {
-            crv: "P-256",
-            ext: true,
-            key_ops: key_ops,
-            kty: "EC",
-            x: this.mzcc.toUrlBase64(String.fromCharCode.apply(null, xv)),
-            y: this.mzcc.toUrlBase64(String.fromCharCode.apply(null, yv)),
-            d: this.mzcc.toUrlBase64(String.fromCharCode.apply(null, dv)),
+           crv: "P-256",
+           ext: true,
+           key_ops: key_ops,
+           kty: "EC",
+           x: this.mzcc.toUrlBase64(String.fromCharCode.apply(null, xv)),
+           y: this.mzcc.toUrlBase64(String.fromCharCode.apply(null, yv)),
+           d: this.mzcc.toUrlBase64(String.fromCharCode.apply(null, dv)),
         };
 
         console.debug(JSON.stringify(jwk));
@@ -139,26 +138,20 @@ class DERLite {
         /* Super light weight public key import function */
         let err = new Error(this.lang.errs.ERR_PUB_D_KEY);
         // Does the record begin with "\x30"
-        if (derArray[0] != 48) {
-            throw err
-        }
+        if (derArray[0] != 48) { throw err}
         // is this an ECDSA record? (looking for \x2a and \x86
-        if (derArray[6] != 42 && derArray[7] != 134) {
-            throw err
-        }
-        if (derArray[15] != 42 && derArray[16] != 134) {
-            throw err
-        }
+        if (derArray[6] != 42 && derArray[7] != 134) { throw err}
+        if (derArray[15] != 42 && derArray[16] != 134) { throw err}
         // Public Key Record usually beings @ offset 23.
         if (derArray[23] != 3 && derArray[24] != 40 &&
-            derArray[25] != 0 && derArray[26] != 4) {
+                derArray[25] != 0 && derArray[26] != 4) {
             throw err;
         }
         // pubkey offset starts at byte 25
         let x = this.mzcc.toUrlBase64(String.fromCharCode
-            .apply(null, derArray.slice(27, 27 + 32)));
+                .apply(null, derArray.slice(27, 27+32)));
         let y = this.mzcc.toUrlBase64(String.fromCharCode
-            .apply(null, derArray.slice(27 + 32, 27 + 64)));
+                .apply(null, derArray.slice(27+32, 27+64)));
 
         // Convert to a JWK and import it.
         let jwk = {
@@ -167,7 +160,7 @@ class DERLite {
             key_ops: ["verify"],
             kty: "EC",
             x: x,
-            y: y
+            y, y
         };
 
         return webCrypto.importKey('jwk', jwk, 'ECDSA', true, ["verify"])
