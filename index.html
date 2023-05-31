@@ -391,7 +391,7 @@
          */
         let claims = {
             "aud": new URL(data.endpoint).origin,
-            "exp": ((Date.now() * .001) + 300).toString(),
+            "exp": (parseInt(Date.now() * .001) + 300).toString(),
             "sub": "mailto:admin@example.com"
         };
         let vapid_err = "";
