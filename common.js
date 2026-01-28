@@ -52,17 +52,17 @@ class MozCommon {
   rawToJWK(raw, ops) {
     /* convert a URL safe base64 raw key to jwk format
      */
-    if (typeof raw == "string") {
+    if (typeof raw === "string") {
       raw = this.strToArray(this.fromUrlBase64(raw));
     }
     // Raw is supposed to start with a 0x04, but some libraries don't. sigh.
-    if (raw.length == 65 && raw[0] != 4) {
+    if (raw.length === 65 && raw[0] !== 4) {
       throw new Error("ERR_PUB_KEY");
     }
 
     raw = raw.slice(-64);
     let x = this.toUrlBase64(this.arrayToStr(raw.slice(0, 32)));
-    let y = this.toUrlBase64(this.arrayToSTr(raw.slice(32, 64)));
+    let y = this.toUrlBase64(this.arrayToStr(raw.slice(32, 64)));
 
     // Convert to a JWK and import it.
     let jwk = {
@@ -71,8 +71,7 @@ class MozCommon {
       key_ops: ops,
       kty: "EC",
       x: x,
-      y,
-      y,
+      y: y,
     };
 
     return jwk;

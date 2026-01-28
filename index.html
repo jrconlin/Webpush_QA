@@ -120,7 +120,6 @@
 
     // Display what happened.
     function show_results() {
-      let currentLocation = window.location;
       let status = [];
       // polyfill for .keys()
       for (let k in test_states) {
@@ -131,7 +130,7 @@
       let state = status.join("&");
       let err_list = "errs=" + JSON.stringify(errs);
       let ok = "success";
-      if (errs.length != 0) {
+      if (errs.length !== 0) {
         ok = "failure";
       }
       window.location = ok + `.html?${state}&${err_list}`;
@@ -153,7 +152,6 @@
       console.error(msg);
       errs.push(msg);
       show_results();
-      document.getElementById("boo").play();
     }
 
     // Reset the page.
@@ -195,9 +193,9 @@
     // Add the optional VAPID information.
     // See vapid.js for how this is built using Javascript.
     // (I'll note that it's MUCH easier using other languages like python or java.)
-    function add_vapid() {
+    function add_vapid(data, subscription_info) {
       let claims = {
-        aud: new URL(data.endpoint).origin,
+        aud: new URL(subscription_info.endpoint).origin,
         exp: parseInt(Date.now() * 0.001) + 300,
         sub: "mailto:admin@example.com",
       };
@@ -215,7 +213,7 @@
           // but this is the easiest way to inject the VAPID headers into
           // the demo send.
           activate("vap");
-          encrypt(data);
+          encrypt(data, subscription_info);
         })
         .catch((err) => {
           show_err(err);
@@ -378,7 +376,7 @@
             })
             .then((headers) => {
               delete headers.publicKey;
-              add_vapid(subscription_info);
+              add_vapid(data, subscription_info);
             })
             .then((_) => subscription_info);
         })
@@ -388,7 +386,8 @@
     }
 
     // Encrypt the message for delivery to the subscription endpoint.
-    function encrypt(data) {
+    // (Note: `_data` is the global data that fetch_var pulls from.)
+    function encrypt(_data, subscription_info) {
       let receiverKey = fetch_var("receiverKey");
       let vapid_headers = fetch_var("vapid_headers");
       let endpoint = fetch_var("endpoint");
@@ -403,7 +402,7 @@
       try {
         // Auth key allows for improved Crypto-Key support.
         // However, it's being slowly rolled out.
-        authKey = data.subscription_info.getKey("auth");
+        authKey = subscription_info.getKey("auth");
         if (authKey) {
           console.debug("Auth key: ", base64url.encode(authKey));
         }
@@ -420,7 +419,7 @@
         msg,
         salt,
       )
-        .then((options) => {
+        .then((encrypted_msg) => {
           // If we have VAPID info, fetch it.
           try {
             if (vapid_headers == undefined) {
@@ -429,15 +428,12 @@
           } catch (e) {
             console.warn("Could not fetch VAPID headers", e);
           }
-          // Populate the extra fields
-          store("osalt", base64url.encode(options.salt));
-          store("odh", options.dh);
           let rawStr = "";
           // Construct the curl. Remember, this needs to
           // write a binary file first, then have curl read that file.
           // This is because putting the data "inline" can fail.
           let sbody = "";
-          let msg_body = options.payload.body;
+          let msg_body = encrypted_msg.payload.body;
           for (let k of msg_body) {
             let ij = parseInt(msg_body[k]);
             let cj = ("00" + ij.toString(16)).slice(-2, 4);
@@ -446,41 +442,34 @@
           rawStr += 'echo -ne "' + sbody + '" > encrypted.data;';
           // dump the raw curl to console.log. This is useful for
           // folks doing device work.
-          rawStr += `curl -v -X ${options.method} "${options.endpoint}" `;
-          let enc_content = "keyid=p256dh;dh=" + options.dh;
-          if (options.encr_header == "crypto-key" && vapid_headers) {
+          rawStr += `curl -v -X POST "${encrypted_msg.endpoint}" `;
+          if (vapid_headers) {
             // add the vapid info
             // Note: technically, these should be separated with a
             // ",", however some Push Servers may reject "," as
             // an invalid character. You can use ";" and create
             // a single record.
-            enc_content += ";" + vapid_headers["crypto-key"];
             rawStr +=
               ` -H "Authorization: ` + `${vapid_headers.authorization}" `;
           }
-          rawStr += ` -H "${options.encr_header}: ` + enc_content + '"';
-          rawStr +=
-            ' -H "encryption: keyid=p256dh;salt=' +
-            base64url.encode(options.salt) +
-            '"';
-          rawStr += ' -H "content-encoding: aesgcm"';
+          rawStr += ' -H "content-encoding: aes128gcm"';
           rawStr += ' -H "TTL: 60"';
           rawStr += " --data-binary @encrypted.data";
           console.log(rawStr);
 
           if (vapid_headers) {
             Object.keys(vapid_headers).forEach((name) => {
-              if (name in options.payload.headers) {
+              if (name in encrypted_msg.payload.headers) {
                 var combo = [];
-                combo.push(options.payload.headers.get(name));
+                combo.push(encrypted_msg.payload.headers.get(name));
                 combo.push(vapid_headers[name]);
-                options.payload.headers[name] = combo.join(",");
+                encrypted_msg.payload.headers[name] = combo.join(",");
               } else {
-                options.payload.headers[name] = vapid_headers[name];
+                encrypted_msg.payload.headers[name] = vapid_headers[name];
               }
             });
             activate("enc");
-            var result = send(options);
+            var result = send(encrypted_msg);
             activate("snd");
             return result;
           }
@@ -495,12 +484,12 @@
     try {
       navigator.serviceWorker.addEventListener("message", function (event) {
         console.debug("Service Worker sent:", JSON.stringify(event.data));
-        if (event.data.type == "content") {
+        if (event.data.type === "content") {
           activate("rcv");
           // Compare what we got with the source to make sure
           // that things worked ok.
           let source = fetch_var("msg");
-          if (source == event.data.content) {
+          if (source === event.data.content) {
             activate("dec");
             show_results();
           }

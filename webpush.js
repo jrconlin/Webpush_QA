@@ -27,12 +27,13 @@ const P256DH = {
 // The second part is the actual message encryption using the agreed key
 // created by the ECDH dance.
 //
+var webCrypto;
 try {
   if (webCrypto === undefined) {
     webCrypto = window.crypto.subtle;
   }
 } catch (e) {
-  var webCrypto = window.crypto.subtle;
+  webCrypto = window.crypto.subtle;
 }
 
 function ensureView(data) {
@@ -83,7 +84,7 @@ async function wp_encrypt(senderKey, sub, data, salt) {
     throw new Error("Expecting Uint8Array for `data` parameter");
   }
 
-  if (!(salt instanceof Uint8Array) || salt.length != 16) {
+  if (!(salt instanceof Uint8Array) || salt.length !== 16) {
     throw new Error("Expecting Uint8Array[16] for `salt` parameter");
   }
 
@@ -308,21 +309,25 @@ function webpush(subscription, data, salt) {
         });
       console.debug("Sender Key", senderKey);
       // encode all the data as chunks
-      return Promise.allMap({
-        endpoint: subscription.endpoint,
-        payload: wp_encrypt(senderKey, subscription, data, salt),
-        pubkey: webCrypto.exportKey("jwk", senderKey.publicKey),
-      });
+      return Promise.allMap(
+        {
+          endpoint: subscription.endpoint,
+          payload: wp_encrypt(senderKey, subscription, data, salt),
+          pubkey: webCrypto.exportKey("jwk", senderKey.publicKey),
+        },
+        {
+          salt: salt,
+        },
+      );
     });
 }
 
-function send(options) {
-  console.debug("payload", options.payload);
-  let endpoint = options.endpoint;
+function send(message) {
+  console.debug("payload", message.payload);
   let send_options = {
     method: "POST",
-    headers: options.payload.headers,
-    body: options.payload.body,
+    headers: message.payload.headers,
+    body: message.payload.body,
     cache: "no-cache",
     referrer: "no-referrer",
   };
@@ -330,8 +335,8 @@ function send(options) {
   // Chances are VERY Good that if this returns an error, the headers
   // were not set. You can check the Network debug panel to see if
   // the request included the headers.
-  console.debug("Fetching:", options.endpoint, send_options);
-  let req = new Request(options.endpoint, send_options);
+  console.debug("Fetching:", message.endpoint, send_options);
+  let req = new Request(message.endpoint, send_options);
   console.debug("request:", req);
   return fetch(req)
     .then((response) => {
@@ -342,7 +347,7 @@ function send(options) {
               "missing headers.<br>If refreshing doesn't work " +
               "the 'curl' call below should still work fine.",
           );
-          show_ok(false);
+          show_results(false);
           throw new Error("Server Returned 400");
         }
         throw new Error(
@@ -356,7 +361,6 @@ function send(options) {
     })
     .catch((err) => {
       console.error("Send Failed: ", err);
-      show_ok(false);
       return false;
     });
 }

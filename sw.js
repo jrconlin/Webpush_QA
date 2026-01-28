@@ -31,7 +31,7 @@ self.addEventListener("push", function (event) {
           let sent = false;
           console.debug(
             "Service worker found clients",
-            JSON.stringify(clients),
+            JSON.stringify(clientList),
           );
           try {
             self.registration.showNotification("Received push message", {
@@ -75,13 +75,16 @@ self.addEventListener("pushsubscriptionchange", function (event) {
       .matchAll()
       .then((clientList) => {
         let sent = false;
-        console.debug("Service worker found clients", JSON.stringify(clients));
+        console.debug(
+          "Service worker found clients",
+          JSON.stringify(clientList),
+        );
         clientList.forEach((client) => {
           console.debug("Service worker sending to client...", client);
           sent = true;
           client.postMessage({ type: "update" });
         });
-        if (sent == false) {
+        if (sent === false) {
           throw new Error("No valid client to send to.");
         }
       })
@@ -97,7 +100,7 @@ self.addEventListener("registration", function (event) {
 });
 
 self.addEventListener("install", function (event) {
-  // The serivce worker has been loaded and installed.
+  // The service worker has been loaded and installed.
   // The browser aggressively caches the service worker code.
   console.log("sw Install: ", JSON.stringify(event));
   // This replaces currently active service workers with this one
@@ -113,5 +116,4 @@ self.addEventListener("activate", function (event) {
   // page.
   event.waitUntil(self.clients.claim());
   console.log("sw Activated: ", JSON.stringify(event));
-  navigator.serviceWorker;
 });
