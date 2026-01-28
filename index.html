@@ -1,428 +1,516 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-    <meta charset="utf-8"/>
+  <head>
+    <meta charset="utf-8" />
     <title>Web Push: Automatic Test Page</title>
-    <link href="style.css" rel="stylesheet"/>
-    <meta name="viewport" content="width=device-width">
-    <meta name="viewport" content="initial-scale=1.0">
-</head>
-<body>
-<div id="error" class="hidden"></div>
-<button id="subscribe">Click to subscribe</button>
-<ul id="steps">
-    <li id="reg">Register</li>
-    <li id="sub">Get Subscription</li>
-    <li id="gen">Generate Data</li>
-    <li id="vap">Generate VAPID</li>
-    <li id="enc">Encrypt Data</li>
-    <li id="snd">Send Data</li>
-    <li class="warn" id="rcv">Received Data</li>
-    <li class="warn" id="dec">Data decrypted</li>
-</ul>
-<audio src="firefox.mp3" id="ring"></audio>
-<audio src="error.mp3" id="boo"></audio>
-</body>
-<script src="common.js"></script>
-<script src="der_lite.js"></script>
-<script src="base64.js"></script>
-<script src="webpush.js"></script>
-<script src="vapid.js"></script>
-<script>
-    'use strict';
+    <link href="style.css" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <div id="error" class="hidden"></div>
+    <button id="subscribe" disabled>Click to subscribe</button>
+    <ul id="steps">
+      <li id="reg">Register</li>
+      <li id="sub">Get Subscription</li>
+      <li id="gen">Generate Data</li>
+      <li id="vap">Generate VAPID</li>
+      <li id="enc">Encrypt Data</li>
+      <li id="snd">Send Data</li>
+      <li class="warn" id="rcv">Received Data</li>
+      <li class="warn" id="dec">Data decrypted</li>
+    </ul>
+    <audio src="firefox.mp3" id="ring"></audio>
+  </body>
+  <!--
+  This is an automated QA test page. This page currently only works with Gecko
+  based browsers because Chromium browsers do not allow for key import.
+  This page will register a new Push endpoint, draft a message, encrypt it,
+  and send the message to itself to test the WebPush system. The user may need
+  to click on the "Click to Subscribe" in order to generate the new
+  subscription. This is due to a restriction on generating Push Notifications
+  without user agreement.
+
+  On success:
+  This will redirect to `success.html` with all states marked as "true" (e.g.)
+  `qa_test/success.html?reg=true&sub=true&gen=true&vap=true&enc=true&snd=true&rcv=true&dec=true&errs=[]`
+
+  On error:
+  This will redirect to `failure.html` with the failing states marked as "false"
+  and errors listed in the `errs` variable.
+
+  This code has been modified from the
+  [Web Push: Data Encryption Test Page](https://mozilla-services.github.io/WebPushDataTestPage/)
+
+  Known Issues:
+  * The service worker may fail to find the original target, which may not
+   trigger the final state change.
+   The service worker will still generate a notification message on receipt of
+   a notification. You can restore by either doing a full refresh "shift+F5",
+   or you can go to `about:serviceworkers` and unregister the service worker
+   associated with this URL. On normal success, the service worker will
+   unregister itself.
+  * The Debugging Console will be very verbose. This may aid in diagnosing
+   issues. In addition, extra debugging information can be made available in
+   the Multiprocess Browser Console by setting
+   `about:config` :: `dom.push.loglevel` to 'Debug'.
+  * I am fully aware that my Javascript skills are weak. This is why I love
+   open source and your ability to provide corrections and improvements.
+
+  -->
+  <script src="common.js"></script>
+  <script src="der_lite.js"></script>
+  <script src="base64.js"></script>
+  <script src="webpush.js"></script>
+  <script src="vapid.js"></script>
+  <script>
+    "use strict";
 
     let mzcc = new MozCommon();
     let vapid = new VapidToken(null, null, mzcc);
     let data = {};
     let test_states = {
-        "reg": false,
-        "sub": false,
-        "gen": false,
-        "vap": false,
-        "enc": false,
-        "snd": false,
-        "rcv": false,
-        "dec": false,
+      reg: false,
+      sub: false,
+      gen: false,
+      vap: false,
+      enc: false,
+      snd: false,
+      rcv: false,
+      dec: false,
     };
     let errs = [];
-    reset();
 
+    // Page Functions
 
+    // Since this page was derived from one that uses a form to store variables,
+    // and this one uses a dictionary, I created these functions to try and pull
+    // the data from multiple sources. For now, they're just helpful wrappers
+    // for development.
+    function fetch_var(key) {
+      try {
+        if (data[key]) {
+          return data[key];
+        }
+      } catch {
+        console.warn("Unknown variable:" + key);
+        return undefined;
+      }
+    }
+
+    function store(key, value) {
+      if (key in data) {
+        console.warn("Overriding " + key + " in data");
+        let err = new Error("Override of " + key);
+        err.name = "OverrideError";
+        throw err;
+      }
+      data[key] = value;
+    }
+
+    // Set a state in the progress tree.
     function activate(id) {
-        try {
-            document.getElementById(id).classList.add("done");
-            test_states[id] = true;
-        }
-        catch (e) {
-            show_err("Activate failed: " + e.message);
-        }
+      try {
+        document.getElementById(id).classList.add("done");
+        test_states[id] = true;
+      } catch (e) {
+        show_err("Activate failed: " + e.message);
+      }
     }
 
-    function notify(title, body) {
-        new Notification(title,
-                {
-                    body: body,
-                    icon: "icon.png",
-                });
-    }
-
+    // Display what happened.
     function show_results() {
-        let currentLocation = window.location;
-        let status = [];
-        // polyfill for .keys()
-        for (let k in test_states) {
-            if (test_states.hasOwnProperty(k)) {
-                status.push(`${encodeURI(k)}=${encodeURI(test_states[k])}`)
-            }
+      let status = [];
+      // polyfill for .keys()
+      for (let k in test_states) {
+        if (test_states.hasOwnProperty(k)) {
+          status.push(`${encodeURI(k)}=${encodeURI(test_states[k])}`);
         }
-        let state = status.join('&');
-        let err_list = 'errs='+JSON.stringify(errs);
-        let ok = 'Success';
-        if (errs.length != 0) {
-            ok = 'Failure';
-        }
-        window.location = ok.toLowerCase()+`.html?${state}&${err_list}`;
+      }
+      let state = status.join("&");
+      let err_list = "errs=" + JSON.stringify(errs);
+      let ok = "success";
+      if (errs.length !== 0) {
+        ok = "failure";
+      }
+      window.location = ok + `.html?${state}&${err_list}`;
     }
 
     function show_err(msg, e) {
-        let err = document.getElementById("error");
-        if (msg == undefined) {
-            msg = "";
+      let err = document.getElementById("error");
+      if (msg == undefined || msg == false) {
+        msg = "";
+        err.classList.add("hidden");
+        err.innerHTML = "";
+      } else {
+        if (e != undefined) {
+          msg = `${msg} -> ${e.message}`;
         }
-        if (msg == false) {
-            err.classList.add("hidden");
-            err.innerHTML = '';
-        } else {
-            if (e != undefined) {
-                msg = `${msg} -> ${e.message}`;
-            }
-            err.innerHTML = msg;
-            err.classList.remove("hidden");
-        }
-        console.error(msg);
-        errs.push(msg);
-        show_results();
-        document.getElementById("boo").play();
+        err.innerHTML = msg;
+        err.classList.remove("hidden");
+      }
+      console.error(msg);
+      errs.push(msg);
+      show_results();
     }
 
+    // Reset the page.
+    function reset() {
+      data = {
+        msg:
+          "Amidst the mists and coldest frosts, I thrust my fists " +
+          "against the posts, and still demand to see the ghosts.",
+      };
+      for (let x of document
+        .getElementById("steps")
+        .getElementsByTagName("li")) {
+        x.classList.remove("done");
+      }
+      activate("gen");
+    }
 
+    // Push Test Functions
+
+    // Initialize the VAPID signature function.
+    function init_vapid() {
+      // Vapid should ALWAYS use it's own key set.
+      store("vapid_exp", parseInt(Date.now() * 0.001) + 300);
+      return vapid.generate_keys().then((keys) => {
+        let exporter = new DERLite();
+        return Promise.all([
+          exporter.export_private_der(keys.privateKey),
+          exporter.export_public_der(keys.publicKey),
+          vapid.export_public_raw(),
+        ]).then(([vapidPrivate, vapidPublic, appServerKey]) => {
+          store("vapidPrivate", vapidPrivate);
+          store("vapidPublic", vapidPublic);
+          store("vapidPublicForDashboard", appServerKey);
+          return mzcc.strToArray(mzcc.fromUrlBase64(appServerKey));
+        });
+      });
+    }
+
+    // Add the optional VAPID information.
+    // See vapid.js for how this is built using Javascript.
+    // (I'll note that it's MUCH easier using other languages like python or java.)
+    function add_vapid(data, subscription_info) {
+      let claims = {
+        aud: new URL(subscription_info.endpoint).origin,
+        exp: parseInt(Date.now() * 0.001) + 300,
+        sub: "mailto:admin@example.com",
+      };
+      let vapid_err = "";
+      document.getElementById("error").innerHTML = vapid_err;
+      if (vapid_err) {
+        return false;
+      }
+      vapid
+        .sign(claims)
+        .then((headers) => {
+          delete headers.publicKey;
+          store("vapidHeaders", JSON.stringify(headers, null, "    "));
+          // We don't really need to do a full message re-encryption here,
+          // but this is the easiest way to inject the VAPID headers into
+          // the demo send.
+          activate("vap");
+          encrypt(data, subscription_info);
+        })
+        .catch((err) => {
+          show_err(err);
+        });
+    }
+
+    // Try to register the serviceworker.
     function register(appServerKey) {
-        /* Register the service worker.
-         Remember, the service worker script must be served either from
-         "localhost" or from a TLS secured site (e.g. https://example.com)
-
-         */
-        return navigator.serviceWorker.register("sw.js")
-                .then(function () {
-                    console.log("Service worker loaded, reloading");
-                    activate("reg");
-                })
-                .catch(function (err) {
-                    if (err.name == "SecurityError" || err.name == "NotSupportedError") {
-                        show_err("Could not start.<br>This page requires a secure " +
-                                "server. (e.g. one that can serve https:// pages). " +
-                                "<br>The page can also be served from `localhost'.");
-                        return
-                    }
-                    show_err(err.message);
-                });
+      return navigator.serviceWorker
+        .register("sw.js")
+        .then(function () {
+          console.log("Service worker loaded, reloading");
+          activate("reg");
+        })
+        .catch(function (err) {
+          if (err.name == "SecurityError" || err.name == "NotSupportedError") {
+            show_err(
+              "Could not start.<br>This page requires a secure " +
+                "server. (e.g. one that can serve https:// pages). " +
+                "<br>The page can also be served from `localhost'.",
+            );
+            return;
+          }
+          show_err(err.message);
+        });
     }
 
+    // Request the new push subscription from the user.
+    // Generally, you only need to do this once and the subscription
+    // will live for however long the user wants it to. Since we're
+    // a test page, however, we want to be more aggressive about
+    // checking and using all the paths.
+    function resub(registration, options) {
+      console.debug("Registering...", registration);
+      // Get the subscription info.
+      document.getElementById("subscribe").disabled = false;
+      return document
+        .getElementById("subscribe")
+        .addEventListener("click", () => {
+          console.debug("asking permission");
+          return Notification.requestPermission().then((permissions) => {
+            console.debug(permissions);
+            document.getElementById("subscribe").disabled = true;
+            //*
+            return build_message(registration, options);
+            // */
+          });
+        });
+    }
 
+    // Fetch an endpoint.
+    //
+    // Yes, this could be a continuation of `register`. I've broken it out
+    // a little purely to make the page a little less "magical" about what
+    // it's doing.
     function subscribe(appServerKey) {
-        /* Fetch an endpoint.
-
-         Yes, this could be a continuation of the above. I've broken it out
-         a little purely to make the page a little less "magical" about what
-         it's doing.
-         */
-        return navigator.serviceWorker.getRegistration()
-            .catch(function(err) {
-                console.error(err);
-            })
-            .then((registration) => {
-                /* The service worker script has been loaded, so
-                    now we need to register for an endpoint.
-
-                    Normally, you only need to register once, the first
-                    time that you ever load a given app or page.
-
-                    */
-                function resub() {
-                    let options = {
-                            // Set this to be "true" if you're only displaying
-                            // the data to the user. Set it to "false" if you
-                            // want to use this notification internally and not
-                            // display a message.
-                            userVisibleOnly: false,
-                            applicationServerKey: appServerKey,
-                        };
-
-                    console.debug("Registering...", registration);
-                    // Get the subscription info.
-                    return document.getElementById("subscribe").addEventListener("click", () => {
-                        console.debug("asking permission");
-                        return Notification.requestPermission().then( (sss) => {
-                            console.debug(sss);
-                            registration.pushManager.subscribe(options).then(
-                                (subscription_info) => {
-                                activate("sub");
-                                if (!subscription_info.endpoint) {
-                                    show_err("Subscription doesn't have an " +
-                                            "endpoint. Aborting.");
-                                    let err = new Error();
-                                    err.name = "NoEndpoint";
-                                    err.message = "Subscription does not have an endpoint";
-                                    throw err;
-                                }
-                                if (!subscription_info.getKey) {
-                                    show_err("Subscription doesn't allow " +
-                                            "data encryption. Aborting.");
-                                    let err = new Error();
-                                    err.name = "NoData";
-                                    err.message = "Subscription does not allow data";
-                                    throw err;
-                                }
-                                // dump out the JSON subscription object
-                                console.debug("Subscription info:", JSON.stringify(subscription_info.toJSON()));
-                                data['endpoint'] = subscription_info.endpoint;
-                                data['receiverKey'] = base64url.encode(subscription_info.getKey('p256dh'));
-                                data['salt'] = base64url.encode(crypto.getRandomValues(
-                                        new Uint8Array(16)));
-                                data['subscription_info'] = subscription_info;
-                                try {
-                                    // Auth key allows for improved Crypto-Key support.
-                                    // However, it's being slowly rolled out.
-                                    let authKey = subscription_info.getKey('auth');
-                                    if (!authKey) {
-                                        console.warn("This browser doesn't support auth key. Please update.");
-                                    }
-                                    data['authKey'] = base64url.encode(authKey);
-                                } catch (e) {
-                                    console.warn("Crypto-Key support unavailable.");
-                                }
-                                let parsed = new URL(subscription_info.endpoint);
-                                return vapid.sign({
-                                    sub: "mailto:admin@example.com",
-                                    aud: parsed.origin,
-                                    exp: (parseInt(Date.now() * .001) + 300).toString()
-                                }).then(headers => {
-                                    delete(headers.publicKey);
-                                    add_vapid(subscription_info);
-                                }).then(_ => subscription_info);
-                            })
-                            .catch(function (err) {
-                                show_err(err.message);
-                            })
-                        })
-                    })
-                }
-                registration.pushManager.getSubscription().then((subscription) => {
-                    if (subscription) {
-                        return subscription.unsubscribe().then(resub);
-                    }
-                    return resub()
-                }).catch(function (err) {
-                    console.error(err);
-                });
+      return navigator.serviceWorker
+        .getRegistration()
+        .catch(function (err) {
+          console.error(err);
+        })
+        .then((registration) => {
+          let options = {
+            // Set this to be "true" if you're only displaying
+            // the data to the user. Set it to "false" if you
+            // want to use this notification internally and not
+            // display a message.
+            userVisibleOnly: false,
+            applicationServerKey: appServerKey,
+          };
+          // Check to see if we have a subscription. If not, we'll need
+          // to generate one. This will require user action.
+          registration.pushManager
+            .getSubscription()
+            .then((subscription) => {
+              if (subscription) {
+                // If you want to force a resubscription (if, say, you don't
+                // make the service worker unregister), you can chain the
+                // following to force it.
+                // return subscription.unsubscribe().then(resub);
+                return build_message(registration, options);
+              }
+              return resub(registration, options);
             })
             .catch(function (err) {
-                if (err.name == "SecurityError" || err.name == "NotSupportedError") {
-                    show_err("Could not start.<br>This page requires a secure " +
-                            "server. (e.g. one that can serve https:// pages). " +
-                            "<br>The page can also be served from `localhost'.", err);
-                    return
-                }
-                show_err("Registration Error");
+              console.error(err);
             });
-
-    }
-    function reset() {
-        data = {
-            "msg": "Amidst the mists and coldest frosts, I thrust my fists " +
-            "against the posts, and still demand to see the ghosts."
-        };
-        for (let x of document.getElementById("steps").getElementsByTagName("li")) {
-            x.classList.remove("done");
-        }
-        activate("gen");
-    }
-
-
-    function encrypt(data) {
-        let receiverKey = data['receiverKey'];
-        let vapid_headers = data['vapid_headers'];
-        let endpoint = data['endpoint'];
-        let salt = base64url.decode(data["salt"]);
-        if (!salt) {
+        })
+        .catch(function (err) {
+          if (err.name == "SecurityError" || err.name == "NotSupportedError") {
+            show_err(
+              "Could not start.<br>This page requires a secure " +
+                "server. (e.g. one that can serve https:// pages). " +
+                "<br>The page can also be served from `localhost'.",
+              err,
+            );
             return;
-        }
-        let msg = data["msg"];
-        console.debug("receiverKey", receiverKey);
-        let rKey = base64url.decode(receiverKey);
-        let authKey;
-        try {
+          }
+          show_err("Registration Error");
+        });
+    }
+
+    // Once the service worker is registered, build the message we're going to
+    // send to ourselves.
+    function build_message(registration, options) {
+      registration.pushManager
+        .subscribe(options)
+        .then((subscription_info) => {
+          activate("sub");
+          if (!subscription_info.endpoint) {
+            show_err("Subscription doesn't have an " + "endpoint. Aborting.");
+            let err = new Error();
+            err.name = "NoEndpoint";
+            err.message = "Subscription does not have an endpoint";
+            throw err;
+          }
+          if (!subscription_info.getKey) {
+            show_err(
+              "Subscription doesn't allow " + "data encryption. Aborting.",
+            );
+            let err = new Error();
+            err.name = "NoData";
+            err.message = "Subscription does not allow data";
+            throw err;
+          }
+          // dump out the JSON subscription object
+          console.debug(
+            "Subscription info:",
+            JSON.stringify(subscription_info.toJSON()),
+          );
+          store("endpoint", subscription_info.endpoint);
+          store(
+            "receiverKey",
+            base64url.encode(subscription_info.getKey("p256dh")),
+          );
+          store(
+            "salt",
+            base64url.encode(crypto.getRandomValues(new Uint8Array(16))),
+          );
+          store("subscription_info", subscription_info);
+          try {
             // Auth key allows for improved Crypto-Key support.
             // However, it's being slowly rolled out.
-            authKey = data.subscription_info.getKey('auth');
-            if (authKey) {
-                console.debug("Auth key: ",
-                        base64url.encode(authKey));
+            let authKey = subscription_info.getKey("auth");
+            if (!authKey) {
+              console.warn(
+                "This browser doesn't support auth key. Please update.",
+              );
             }
-        } catch (e) {
-            console.warn("Crypto-Key support unavailable.", e);
-        }
-
-        return webpush({
-                    endpoint: endpoint,
-                    receiverKey: rKey,
-                    authKey: authKey
-                },
-                msg,
-                salt)
-                .then(options => {
-                    // If we have VAPID info, fetch it.
-                    try {
-                        if (vapid_headers == undefined) {
-                            vapid_headers = JSON.parse(data["vapidHeaders"]);
-                        }
-                    } catch (e) {
-                        console.warn("Could not fetch VAPID headers", e);
-                    }
-                    // Populate the extra fields
-                    data['osalt'] = base64url.encode(options.salt);
-                    data['odh'] = options.dh;
-                    let rawStr = '';
-                    // Construct the curl. Remember, this needs to
-                    // write a binary file first, then have curl read that file.
-                    // This is because putting the data "inline" can fail.
-                    let sbody = '';
-                    for (let k of options.payload) {
-                        let ij = parseInt(options.payload[k]);
-                        let cj = ("00" + ij.toString(16)).slice(-2, 4);
-                        sbody += `\\x${cj}`;
-                    }
-                    rawStr += 'echo -ne "' + sbody + '" > encrypted.data;';
-                    // dump the raw curl to console.log. This is useful for
-                    // folks doing device work.
-                    rawStr += `curl -v -X ${options.method} "${options.endpoint}" `;
-                    let enc_content = 'keyid=p256dh;dh=' + options.dh;
-                    if (options.encr_header == "crypto-key" && vapid_headers) {
-                        // add the vapid info
-                        // Note: technically, these should be separated with a
-                        // ",", however some Push Servers may reject "," as
-                        // an invalid character. You can use ";" and create
-                        // a single record.
-                        enc_content += ";" + vapid_headers["crypto-key"];
-                        rawStr += ` -H "Authorization: ` +
-                                `${vapid_headers.authorization}" `;
-                    }
-                    rawStr += ` -H "${options.encr_header}: ` + enc_content + '"';
-                    rawStr += ' -H "encryption: keyid=p256dh;salt=' +
-                            base64url.encode(options.salt) + '"';
-                    rawStr += ' -H "content-encoding: aesgcm"';
-                    rawStr += ' -H "TTL: 60"';
-                    rawStr += ' --data-binary @encrypted.data';
-                    console.log(rawStr);
-
-                    if (vapid_headers) {
-                        Object.keys(vapid_headers).forEach(name => {
-                            let headers = [];
-                            headers.push(vapid_headers[name]);
-                            let he = options.headers.get(name);
-                            if (he) {
-                                headers.push(he);
-                            }
-                            options.headers.set(name, headers.join(","));
-                        });
-                    }
-                    activate("enc");
-                    return send(options);
-                })
-                .catch(e => {
-                    show_err("Error:", e);
-                });
-    }
-
-    try {
-        navigator.serviceWorker.addEventListener('message', function (event) {
-            console.debug('Service Worker sent:', JSON.stringify(event.data));
-            if (event.data.type == 'content') {
-                activate("rcv");
-                // Compare what we got with the source to make sure
-                // that things worked ok.
-                let source = data["msg"];
-                if (source == event.data.content) {
-                    activate("dec");
-                    show_results();
-                }
-                //notify("Got message", event.data.content);
-                document.getElementById("ring").play();
-            }
+            store("authKey", base64url.encode(authKey));
+          } catch (e) {
+            console.warn("Crypto-Key support unavailable.");
+          }
+          let parsed = new URL(subscription_info.endpoint);
+          return vapid
+            .sign({
+              sub: "mailto:admin@example.com",
+              aud: parsed.origin,
+              exp: (parseInt(Date.now() * 0.001) + 300).toString(),
+            })
+            .then((headers) => {
+              delete headers.publicKey;
+              add_vapid(data, subscription_info);
+            })
+            .then((_) => subscription_info);
+        })
+        .catch(function (err) {
+          show_err(err.message);
         });
-    } catch (e) {
-        show_err("Could not initialize, Are your using the `https` version?", e);
     }
 
+    // Encrypt the message for delivery to the subscription endpoint.
+    // (Note: `_data` is the global data that fetch_var pulls from.)
+    function encrypt(_data, subscription_info) {
+      let receiverKey = fetch_var("receiverKey");
+      let vapid_headers = fetch_var("vapid_headers");
+      let endpoint = fetch_var("endpoint");
+      let salt = base64url.decode(fetch_var("salt"));
+      if (!salt) {
+        return;
+      }
+      let msg = fetch_var("msg");
+      console.debug("receiverKey", receiverKey);
+      let rKey = base64url.decode(receiverKey);
+      let authKey;
+      try {
+        // Auth key allows for improved Crypto-Key support.
+        // However, it's being slowly rolled out.
+        authKey = subscription_info.getKey("auth");
+        if (authKey) {
+          console.debug("Auth key: ", base64url.encode(authKey));
+        }
+      } catch (e) {
+        console.warn("Crypto-Key support unavailable.", e);
+      }
 
-    function init_vapid() {
-        // Vapid should ALWAYS use it's own key set.
-        data['vapid_exp'] = parseInt(Date.now() * .001) + 300;
-        return vapid.generate_keys().then(keys => {
-            let exporter = new DERLite();
-            return Promise.all([
-                exporter.export_private_der(keys.privateKey),
-                exporter.export_public_der(keys.publicKey),
-                vapid.export_public_raw(),
-            ]).then(([vapidPrivate, vapidPublic, appServerKey]) => {
-                data["vapidPrivate"] = vapidPrivate;
-                data["vapidPublic"] = vapidPublic;
-                data["vapidPublicForDashboard"] = appServerKey;
-                return mzcc.strToArray(mzcc.fromUrlBase64(appServerKey));
+      return webpush(
+        {
+          endpoint: endpoint,
+          receiverKey: rKey,
+          authKey: authKey,
+        },
+        msg,
+        salt,
+      )
+        .then((encrypted_msg) => {
+          // If we have VAPID info, fetch it.
+          try {
+            if (vapid_headers == undefined) {
+              vapid_headers = JSON.parse(fetch_var("vapidHeaders"));
+            }
+          } catch (e) {
+            console.warn("Could not fetch VAPID headers", e);
+          }
+          let rawStr = "";
+          // Construct the curl. Remember, this needs to
+          // write a binary file first, then have curl read that file.
+          // This is because putting the data "inline" can fail.
+          let sbody = "";
+          let msg_body = encrypted_msg.payload.body;
+          for (let k of msg_body) {
+            let ij = parseInt(msg_body[k]);
+            let cj = ("00" + ij.toString(16)).slice(-2, 4);
+            sbody += `\\x${cj}`;
+          }
+          rawStr += 'echo -ne "' + sbody + '" > encrypted.data;';
+          // dump the raw curl to console.log. This is useful for
+          // folks doing device work.
+          rawStr += `curl -v -X POST "${encrypted_msg.endpoint}" `;
+          if (vapid_headers) {
+            // add the vapid info
+            // Note: technically, these should be separated with a
+            // ",", however some Push Servers may reject "," as
+            // an invalid character. You can use ";" and create
+            // a single record.
+            rawStr +=
+              ` -H "Authorization: ` + `${vapid_headers.authorization}" `;
+          }
+          rawStr += ' -H "content-encoding: aes128gcm"';
+          rawStr += ' -H "TTL: 60"';
+          rawStr += " --data-binary @encrypted.data";
+          console.log(rawStr);
+
+          if (vapid_headers) {
+            Object.keys(vapid_headers).forEach((name) => {
+              if (name in encrypted_msg.payload.headers) {
+                var combo = [];
+                combo.push(encrypted_msg.payload.headers.get(name));
+                combo.push(vapid_headers[name]);
+                encrypted_msg.payload.headers[name] = combo.join(",");
+              } else {
+                encrypted_msg.payload.headers[name] = vapid_headers[name];
+              }
             });
+            activate("enc");
+            var result = send(encrypted_msg);
+            activate("snd");
+            return result;
+          }
+        })
+        .catch((e) => {
+          show_err("Error:", e);
         });
     }
 
-    function add_vapid() {
-        /* Add the optional VAPID information.
-
-         See vapid.js for how this is built using Javascript.
-         (I'll note that it's MUCH easier using other languages like python or java.)
-         */
-        let claims = {
-            "aud": new URL(data.endpoint).origin,
-            "exp": parseInt(Date.now() * .001) + 300,
-            "sub": "mailto:admin@example.com"
-        };
-        let vapid_err = "";
-        document.getElementById("error").innerHTML = vapid_err;
-        if (vapid_err) {
-            return false;
+    // Main function:
+    reset();
+    try {
+      navigator.serviceWorker.addEventListener("message", function (event) {
+        console.debug("Service Worker sent:", JSON.stringify(event.data));
+        if (event.data.type === "content") {
+          activate("rcv");
+          // Compare what we got with the source to make sure
+          // that things worked ok.
+          let source = fetch_var("msg");
+          if (source === event.data.content) {
+            activate("dec");
+            show_results();
+          }
+          //notify("Got message", event.data.content);
+          //document.getElementById("ring").play();
         }
-        vapid.sign(claims).then(headers => {
-            delete(headers.publicKey);
-            data["vapidHeaders"] = JSON.stringify(headers, null, '    ');
-            // We don't really need to do a full message re-encryption here,
-            // but this is the easiest way to inject the VAPID headers into
-            // the demo send.
-            activate("vap");
-            encrypt(data)
-        }) .catch(err => {
-          show_err(err)
-        });
+      });
+    } catch (e) {
+      show_err("Could not initialize, Are your using the `https` version?", e);
     }
 
     init_vapid()
-        .catch(function(err){
-            console.error(err)
-        })
-        .then(app_server_key => {
-                console.debug("apo_key", app_server_key);
-                register(app_server_key);
-                subscribe(app_server_key);
-            })
-            .catch(e => {
-                show_err("Could not generate VAPID keys: " + e.message);
-            })
-</script>
+      .catch(function (err) {
+        console.error(err);
+      })
+      .then((app_server_key) => {
+        console.debug("apo_key", app_server_key);
+        register(app_server_key);
+        subscribe(app_server_key);
+      })
+      .catch((e) => {
+        show_err("Could not generate VAPID keys: " + e.message);
+      });
+  </script>
 </html>

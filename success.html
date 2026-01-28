@@ -1,16 +1,27 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
+  <head>
     <title>Success! All good!</title>
-    <meta charset="utf-8"/>
-    <link href="style.css" rel="stylesheet"/>
-    <meta name="viewport" content="width=device-width">
-    <meta name="viewport" content="initial-scale=1.0">
-</head>
-<body>
-<h1>Yay! All good!</h1>
-<p>Everything passed. Gold star for YOU!</p>
-<p id="goldstar">⭐️</p>
-<p><a href="/Webpush_QA/">Try again?</a></p>
-</body>
+    <meta charset="utf-8" />
+    <link href="style.css" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <!--
+    Why, yes, this is the "FirefoxOS" ring tone, which was blasted at full volume
+    whenever the user wanted to Find their Device. It's sentimental.
+     -->
+    <audio src="firefox.mp3" id="ring"></audio>
+    <h1>Yay! All good!</h1>
+    <p>Everything passed. Gold star for YOU!</p>
+    <p id="goldstar">⭐️</p>
+    <p><a href="/Webpush_QA/">Try again?</a></p>
+    <script>
+      document
+        .getElementById("goldstar")
+        .addEventListener("click", function (event) {
+          document.getElementById("ring").play();
+        });
+    </script>
+  </body>
 </html>

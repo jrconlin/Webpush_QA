@@ -1,46 +1,51 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-    <meta charset="utf-8"/>
+  <head>
+    <meta charset="utf-8" />
     <title>Web Push: Automatic Test Page</title>
-    <link href="style.css" rel="stylesheet"/>
-    <meta name="viewport" content="width=device-width">
-    <meta name="viewport" content="initial-scale=1.0">
-</head>
-<body>
-<div id="error"></div>
-<ul id="steps">
-    <li id="reg">Register</li>
-    <li id="sub">Get Subscription</li>
-    <li id="gen">Generate Data</li>
-    <li id="vap">Generate VAPID</li>
-    <li id="enc">Encrypt Data</li>
-    <li id="snd">Send Data</li>
-    <li class="warn" id="rcv">Received Data</li>
-    <li class="warn" id="dec">Data decrypted</li>
-</ul>
-<p><a href="/Webpush_QA/">Try Again?</a></p>
-<script>
-    let res = new URLSearchParams(location.search);
-    for (r of res.keys()) {
+    <link href="style.css" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <div id="error"></div>
+    <audio src="error.mp3" id="boo"></audio>
+    <ul id="steps">
+      <li id="reg">Register</li>
+      <li id="sub">Get Subscription</li>
+      <li id="gen">Generate Data</li>
+      <li id="vap">Generate VAPID</li>
+      <li id="enc">Encrypt Data</li>
+      <li id="snd">Send Data</li>
+      <li class="warn" id="rcv">Received Data</li>
+      <li class="warn" id="dec">Data decrypted</li>
+    </ul>
+    <p><a href="/Webpush_QA/">Try Again?</a></p>
+    <script>
+      document
+        .getElementById("error")
+        .addEventListener("click", function (event) {
+          document.getElementById("boo").play();
+        });
+      let res = new URLSearchParams(location.search);
+      for (r of res.keys()) {
         if (r == "errs") {
-            let errd = res.get(r);
-            console.debug(errd);
-            let errs = JSON.parse(errd);
-            let errList = document.createElement("ol");
-            for (e of errs) {
-                let item = document.createElement("li");
-                item.classList.add("alert");
-                item.innerText = e;
-                errList.appendChild(item);
-            }
-            document.getElementById("error").appendChild(errList);
-            continue;
+          let errd = res.get(r);
+          console.debug(errd);
+          let errs = JSON.parse(errd);
+          let errList = document.createElement("ol");
+          for (e of errs) {
+            let item = document.createElement("li");
+            item.classList.add("alert");
+            item.innerText = e;
+            errList.appendChild(item);
+          }
+          document.getElementById("error").appendChild(errList);
+          continue;
         }
         if (res.get(r) == "true") {
-           document.getElementById(r).classList.add("done");
+          document.getElementById(r).classList.add("done");
         }
-    }
-</script>
-</body>
+      }
+    </script>
+  </body>
 </html>
